@@ -1,0 +1,110 @@
+name: Chat background test APK
+on:
+  push:
+    branches: [feature/chat-background]
+    paths:
+      - 'src/android/**'
+      - 'src/shared/**'
+      - 'deps/**'
+      - 'scripts/**'
+      - '.github/workflows/chat-background-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wallpaper-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ANDROID_NDK_VERSION: '28.0.13004108'
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch Android PRoot submodule only
+        run: git submodule update --init --depth 1 deps/proot
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: deps/rclone-mobile/go.sum
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned Android tools
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'cmake;3.22.1' "ndk;$ANDROID_NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache native dependencies and stable test signing key
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps/build
+            deps/talloc
+            src/android/app/libs/rclone.aar
+            src/android/app/src/main/assets/proot-aarch64
+            src/android/app/src/main/assets/alpine-minirootfs.tar.gz
+            src/android/app/src/main/jniLibs/arm64-v8a/libproot.so
+            ~/.android/debug.keystore
+          key: wallpaper-native-v1-${{ runner.os }}-ndk28-go126-${{ hashFiles('deps/rclone-mobile/**', 'deps/build_proot.sh', 'deps/build_rclone_android.sh', 'scripts/prepare_android_sandbox.sh', '.gitmodules') }}
+      - name: Build PRoot and prepare Alpine
+        run: |
+          bash deps/build_proot.sh
+          bash scripts/prepare_android_sandbox.sh
+      - name: Build rclone and embedded Tailscale
+        run: |
+          if [ ! -s src/android/app/libs/rclone.aar ]; then
+            cd deps/rclone-mobile
+            MOBILE_VERSION=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+            go install "golang.org/x/mobile/cmd/gomobile@$MOBILE_VERSION"
+            go install "golang.org/x/mobile/cmd/gobind@$MOBILE_VERSION"
+            gomobile init
+            cd ../..
+            bash deps/build_rclone_android.sh
+            mkdir -p src/android/app/libs
+            cp deps/build/rclone/rclone.aar src/android/app/libs/
+          fi
+      - name: Configure isolated test installation
+        run: python3 scripts/configure_wallpaper_test.py
+      - name: Wallpaper static checks
+        run: python3 verify-chat-background.py
+      - name: Unit tests and APK
+        working-directory: src/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 :app:testGithubDebugUnitTest --tests 'com.openminis.app.ui.chat.ChatBackgroundPolicyTest' :app:assembleGithubDebug
+      - name: Inspect APK and write SHA256
+        run: |
+          APK=src/android/app/build/outputs/apk/github/debug/app-github-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -5
+          unzip -l "$APK" | rg 'libproot|alpine-minirootfs|libgojni'
+          sha256sum "$APK" > "$APK.sha256"
+      - name: Upload isolated test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Minis-chat-background-test-${{ github.run_number }}
+          path: |
+            src/android/app/build/outputs/apk/github/debug/*.apk
+            src/android/app/build/outputs/apk/github/debug/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper-test-reports-${{ github.run_number }}
+          path: |
+            src/android/app/build/reports/tests/
+            src/android/app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
