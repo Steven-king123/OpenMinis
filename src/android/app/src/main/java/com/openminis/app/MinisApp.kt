@@ -605,6 +605,12 @@ class MinisApp : Application(), ImageLoaderFactory {
         // late, non-UI subsystem from permanently locking the user out
         // of an app whose UI dependencies are in fact ready.
         subsystemsInitialized = true
+        com.openminis.app.memory.AdvancedMemoryRuntime.scope.launch {
+            runCatching {
+                com.openminis.app.memory.AdvancedMemoryRuntime.store(this@MinisApp)
+                com.openminis.app.memory.AdvancedMemoryIdleScheduler.restore(this@MinisApp)
+            }.onFailure { Log.w("MinisApp", "Advanced memory unavailable; standard chat remains usable") }
+        }
         // [T-update-channels] Automatic update checks on each return to the
         // foreground, throttled (24 h stable / 6 h beta); off on store builds.
         runCatching { com.openminis.app.data.UpdateAutoChecker.install(this) }

@@ -7,8 +7,8 @@ old='''        getByName("debug") {
             buildConfigField("boolean", "DEV_TOOLS", "true")
         }'''
 new='''        getByName("debug") {
-            applicationIdSuffix = ".wallpapertest"
-            versionNameSuffix = "-wallpaper-test"
+            applicationIdSuffix = ".memorytest"
+            versionNameSuffix = "-memory-test"
             buildConfigField("boolean", "DEV_TOOLS", "false")
         }'''
 assert s.count(old)==1, 'Debug build block changed; inspect before patching'
@@ -20,5 +20,5 @@ strings=root/'src/android/app/src/main/res/values/strings.xml'
 s=strings.read_text()
 old='<string name="app_name">Minis</string>'
 assert s.count(old)==1, 'App label changed; inspect before patching'
-strings.write_text(s.replace(old,'<string name="app_name">Minis Background Test</string>'))
-print('CI test package: com.openminis.app.wallpapertest; updates and debug server disabled')
+strings.write_text(s.replace(old,'<string name="app_name">Minis Memory Test</string>'))
+print('CI test package: com.openminis.app.memorytest; updates and debug server disabled')

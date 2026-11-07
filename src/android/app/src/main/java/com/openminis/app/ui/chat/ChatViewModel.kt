@@ -2510,7 +2510,7 @@ class ChatViewModel(
             visionGroupConfigured = com.openminis.app.tools.VisionGroupResolver.isConfigured(
                 providerRepository, context,
             ),
-            memoryEnabled = _memoryEnabled.value,
+            memoryEnabled = _memoryEnabled.value && com.openminis.app.memory.AdvancedMemoryRuntime.isAvailable(context),
             isHelper = isHelper,
             delegateEnabled = com.openminis.app.tools.AgentToolSwitch.AGENTS.isEnabled(context),
             browserEnabled = com.openminis.app.tools.AgentToolSwitch.BROWSER.isEnabled(context),
@@ -2520,6 +2520,7 @@ class ChatViewModel(
             // would reject.
             rosterNames = providerRepository.subAgents.map { it.name },
             userAskExposed = userAskExposedThisRun,
+            advancedMemory = com.openminis.app.memory.AdvancedMemoryRuntime.isEnabled(context),
         )
 
     /**
@@ -5960,6 +5961,9 @@ class ChatViewModel(
                     return@collect
                 }
                 publishContextUsage(crossingOnly = false)
+                if (_memoryEnabled.value && !isHelper && !canResume.value && realSessionId.isNotBlank()) {
+                    com.openminis.app.memory.AdvancedMemoryRuntime.schedule(context, realSessionId)
+                }
             }
         }
         // [T-android-thinking-row-follows-run] Same edge, for the thinking
@@ -8348,6 +8352,7 @@ class ChatViewModel(
      */
     fun retryFromMessage(messageId: String) {
         if (_isStreaming.value) return
+        com.openminis.app.memory.AdvancedMemoryRuntime.onSessionActivity(context, activeSessionId)
         // [T-android-mute-reset-on-drain] Retry is new work, as on iOS.
         com.openminis.app.agent.jobs.AgentJobRegistry.clearDelegationMute(activeSessionId)
         _canResume.value = false
@@ -8472,6 +8477,7 @@ class ChatViewModel(
      */
     fun deleteFromMessage(messageId: String) {
         if (_isStreaming.value) return
+        com.openminis.app.memory.AdvancedMemoryRuntime.onSessionActivity(context, activeSessionId)
         _canResume.value = false
         val messages = _messages.value
         val index = messages.indexOfFirst { it.id == messageId }
@@ -8745,6 +8751,7 @@ class ChatViewModel(
      */
     fun editMessage(messageId: String): String? {
         if (_isStreaming.value) return null
+        com.openminis.app.memory.AdvancedMemoryRuntime.onSessionActivity(context, activeSessionId)
         val msg = _messages.value.firstOrNull { it.id == messageId } ?: return null
         if (msg.role != "user") return null
         var text = msg.content
@@ -10944,8 +10951,20 @@ class ChatViewModel(
         // here clears it only while it is still this loop's own, so a resume
         // that already started the next turn keeps its token.
         val turnGen = liveTurn.begin()
+        com.openminis.app.memory.AdvancedMemoryRuntime.onSessionActivity(context, activeSessionId)
         try {
-            runAgentLoopBody(provider, systemPrompt, fallbackProviders, fallbackStrategy, prefill, turnGen)
+            val advancedStore = runCatching { com.openminis.app.memory.AdvancedMemoryRuntime.store(context) }.getOrNull()
+            val memoryEpoch = advancedStore?.config?.value?.epoch
+            val recalled = if (_memoryEnabled.value && advancedStore != null && advancedStore.config.value.enabled && !isHelper) {
+                val query = agentHistory.lastOrNull { it.role == LLMMessage.Role.USER }?.content.orEmpty().take(4000)
+                com.openminis.app.memory.AdvancedMemoryRuntime.recall(context, query)
+            } else emptyList()
+            val memoryFragment = if (_memoryEnabled.value && advancedStore != null && advancedStore.config.value.enabled && advancedStore.config.value.epoch == memoryEpoch) {
+                com.openminis.app.memory.AdvancedMemoryPrompt.render(recalled.filter { hit ->
+                    advancedStore.records.value.any { it.id == hit.record.id && it.revision == hit.record.revision && !it.deleted }
+                })
+            } else ""
+            runAgentLoopBody(provider, (systemPrompt ?: "") + memoryFragment, fallbackProviders, fallbackStrategy, prefill, turnGen)
         } catch (ce: kotlinx.coroutines.CancellationException) {
             // [stop-diag] Logged and rethrown; behaviour unchanged.
             AppLogger.info(TAG_STREAM, "[stop-diag] runAgentLoop EXIT reason=cancelled sid=$activeSessionId cause=${ce.message}")
@@ -14173,7 +14192,12 @@ class ChatViewModel(
                 } else {
                     toolDisabledResult("browser_use")
                 }
-            "memory_write" -> executeMemoryWriteTool(argsJson)
+            "memory_write", "memory_update", "memory_delete" -> {
+                if (com.openminis.app.memory.AdvancedMemoryRuntime.isEnabled(context)) {
+                    executeAdvancedMemoryTool(name, argsJson)
+                } else if (name == "memory_write") executeMemoryWriteTool(argsJson)
+                else ToolExecutionResult("Advanced memory is disabled", false)
+            }
             // [T-sub-agents-v1] One tool, five actions. The legacy names are
             // accepted so a replayed call from a transcript written before the
             // rename still dispatches instead of hitting "Unknown tool".
@@ -14216,7 +14240,10 @@ class ChatViewModel(
                         false,
                     )
                 }
-            "memory_get" -> executeMemoryGetTool(argsJson)
+            "memory_get" -> {
+                if (com.openminis.app.memory.AdvancedMemoryRuntime.isEnabled(context)) executeAdvancedMemoryTool(name, argsJson)
+                else executeMemoryGetTool(argsJson)
+            }
             // [T-port-user-ask] Card in the chat, then wait for the user.
             // [T-user-ask-exposure-guard] A run that does not offer the tool (the
             // setting is off, a helper / sub agent, a scheduled or other headless
@@ -15675,6 +15702,56 @@ class ChatViewModel(
     private fun resizeJpegToMaxEdge(data: ByteArray, maxEdge: Int): ByteArray? =
         ImageBudget.resizeJpegToMaxEdge(data, maxEdge)
 
+    private suspend fun executeAdvancedMemoryTool(name: String, argsJson: String): ToolExecutionResult {
+        if (!_memoryEnabled.value || (isHelper && name != "memory_get")) {
+            return ToolExecutionResult("Memory operation is disabled for this session", false)
+        }
+        val runtime = com.openminis.app.memory.AdvancedMemoryRuntime
+        val store = runtime.store(context)
+        val args = try { JSONObject(argsJson) } catch (_: Exception) {
+            return ToolExecutionResult("Invalid memory arguments", false)
+        }
+        val title = args.optString("tool_title", name)
+        val epoch = store.config.value.epoch
+        val result = if (name == "memory_get") {
+            val query = args.optString("keywords", "").take(4000)
+            val hits = if (query.isBlank()) {
+                store.records.value.filter { !it.deleted }.sortedByDescending { it.updatedAt }.take(20).map {
+                    com.openminis.app.memory.MemoryHit(it, 0.0, null, 0.0, "Explicit recent-item listing; not a similarity result", true)
+                }
+            } else runtime.recall(context, query)
+            if (!_memoryEnabled.value || !store.config.value.enabled || store.config.value.epoch != epoch) {
+                return ToolExecutionResult("Memory settings changed; result discarded", false)
+            }
+            com.openminis.app.memory.AdvancedMemoryTools.result(hits.filter { h ->
+                store.records.value.any { it.id == h.record.id && it.revision == h.record.revision && !it.deleted }
+            }, title)
+        } else {
+            val changed = com.openminis.app.memory.AdvancedMemoryTools.mutate(context, name, argsJson)
+            if (changed.success && name != "memory_delete") {
+                // Text is committed first. Vector failure must never lose that text.
+                val id = runCatching { JSONObject(changed.output).optString("id") }.getOrNull()
+                val record = store.records.value.firstOrNull { it.id == id && !it.deleted }
+                if (record != null && store.config.value.embeddingEntryId.isNotBlank()) {
+                    try {
+                        val (fingerprint, vector) = runtime.models(context).embed(record.content, store.config.value.embeddingEntryId)
+                        if (store.config.value.enabled && store.config.value.epoch == epoch && _memoryEnabled.value) {
+                            store.attachVector(record.id, record.revision, fingerprint, vector)
+                        }
+                    } catch (ce: kotlinx.coroutines.CancellationException) { throw ce }
+                    catch (_: Exception) { /* Saved text remains searchable by keywords. */ }
+                }
+            }
+            changed
+        }
+        _memoryToolRecords.value = _memoryToolRecords.value + MemoryToolRecord(
+            title = title, isWrite = name != "memory_get", preview = result.output.take(100),
+            output = result.output, writtenContent = null,
+            keywords = if (name == "memory_get") args.optString("keywords") else null,
+        )
+        return ToolExecutionResult(result.output, result.success, toolTitle = title)
+    }
+
     private fun executeMemoryWriteTool(argsJson: String): ToolExecutionResult {
         val repo = memoryRepository ?: return ToolExecutionResult("Error: Memory not available", false)
         if (!_memoryEnabled.value) {
@@ -16295,8 +16372,12 @@ class ChatViewModel(
         // surfacing the state in the prompt lets it explain why memories
         // aren't reachable when the user asks. The fragment / tool dual
         // gate is symmetrical: enable both or disable both, never mismatch.
-        val memoryOn = _memoryEnabled.value
-        val toolListMemoryBullets = if (memoryOn) {
+        val memoryOn = _memoryEnabled.value && com.openminis.app.memory.AdvancedMemoryRuntime.isAvailable(context)
+        val advancedMemoryOn = com.openminis.app.memory.AdvancedMemoryRuntime.isEnabled(context)
+        val toolListMemoryBullets = if (memoryOn && advancedMemoryOn) {
+            com.openminis.app.agent.jobs.HelperRunner.systemPromptBullet(!isHelper && com.openminis.app.agent.jobs.AgentSettings.isEnabled(context)) +
+                subAgentRosterPromptSection() + "\n- memory_write / memory_get: maintain and search the advanced memory store.\n"
+        } else if (memoryOn) {
             """
 ${com.openminis.app.agent.jobs.HelperRunner.systemPromptBullet(!isHelper && com.openminis.app.agent.jobs.AgentSettings.isEnabled(context))}${subAgentRosterPromptSection()}- memory_write: Save a memory entry to today's daily log (YYYY-MM-DD.md). Use proactively to note user preferences, project patterns, and important context.
 - memory_get: Recall memories with keyword search. Check memory at the start of new topics to leverage past knowledge."""
@@ -16307,7 +16388,9 @@ ${com.openminis.app.agent.jobs.HelperRunner.systemPromptBullet(!isHelper && com.
             // tools it can't actually call.
             ""
         }
-        val memorySystemSection = if (memoryOn) {
+        val memorySystemSection = if (memoryOn && advancedMemoryOn) {
+            "\n\n" + com.openminis.app.memory.AdvancedMemoryPrompt.TOOL_GUIDANCE
+        } else if (memoryOn) {
             """
 
 Memory system (currently ENABLED):
@@ -16486,8 +16569,8 @@ Scheduled tasks: crontab / at / nohup loops will stop when the app is suspended,
         // intentionally NOT gated by this toggle: skills are part of the
         // tool surface and SOUL.md is part of identity, both orthogonal
         // to the memory feature.
-        val globalMemoryFragment = if (memoryOn) memoryRepository?.loadGlobalMemoryFragment() else null
-        val dailyMemoryFragment = if (memoryOn) memoryRepository?.loadRecentDailyMemoryFragment() else null
+        val globalMemoryFragment = if (memoryOn && !advancedMemoryOn) memoryRepository?.loadGlobalMemoryFragment() else null
+        val dailyMemoryFragment = if (memoryOn && !advancedMemoryOn) memoryRepository?.loadRecentDailyMemoryFragment() else null
         // [XSessionDiag] Hypothesis 3: ties the memory-injection sizes to a
         // SESSION id. MemoryRepository itself has no session context, so its own
         // `memory/daily-inject` line (which names the source files) cannot say who
@@ -17367,6 +17450,7 @@ Scheduled tasks: crontab / at / nohup loops will stop when the app is suspended,
      *   of the shell pool so background processes survive.
      */
     fun cancelStream(keepBackground: Boolean = false) {
+        com.openminis.app.memory.AdvancedMemoryRuntime.onSessionActivity(context, activeSessionId)
         com.openminis.app.diagnostics.JankDiag.onCancelStreamStart()
         // [T-android-stop-late-write] Log the real flag. This used to print a
         // literal "_isStreaming=false" whatever the state, which made a field

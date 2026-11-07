@@ -50,6 +50,7 @@ object AgentTools {
         // not a sub agent, an interactive run). Not in the list = does not
         // exist: no schema, no prompt line, no retries on it. Last, as on iOS.
         userAskExposed: Boolean = false,
+        advancedMemory: Boolean = false,
     ): List<AgentToolDefinition> = buildList {
         add(shellExecuteDefinition())
         add(FileReadTool.definition())
@@ -60,8 +61,12 @@ object AgentTools {
         }
         if (browserEnabled) add(browserUseDefinition())
         if (memoryEnabled) {
-            if (!isHelper) add(memoryWriteDefinition())
-            add(memoryGetDefinition())
+            if (advancedMemory) {
+                addAll(com.openminis.app.memory.AdvancedMemoryTools.definitions(readOnly = isHelper))
+            } else {
+                if (!isHelper) add(memoryWriteDefinition())
+                add(memoryGetDefinition())
+            }
         }
         if (!isHelper && delegateEnabled) {
             add(subAgentTaskDefinition(rosterNames))

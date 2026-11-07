@@ -80,6 +80,8 @@ fun MemoryManagementScreen(
     }
 
     SettingsScaffold(title = stringResource(R.string.memory_title), onBack = onBack) {
+        AdvancedMemorySettings()
+        Spacer(modifier = Modifier.height(16.dp))
         // Always-visible global toggle — sits above the file list so the
         // user finds it whether or not any memory files exist yet.
         SettingsSection(

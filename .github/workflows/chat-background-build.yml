@@ -1,7 +1,7 @@
-name: Chat background test APK
+name: Advanced memory test APK
 on:
   push:
-    branches: [feature/chat-background]
+    branches: [feature/advanced-memory]
     paths:
       - 'src/android/**'
       - 'src/shared/**'
@@ -96,7 +96,7 @@ jobs:
         working-directory: src/android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --max-workers=1 '-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:testGithubDebugUnitTest --tests 'com.openminis.app.ui.chat.ChatBackgroundPolicyTest' :app:assembleGithubDebug
+          ./gradlew --no-daemon --max-workers=1 '-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:testGithubDebugUnitTest --tests 'com.openminis.app.ui.chat.ChatBackgroundPolicyTest' --tests 'com.openminis.app.memory.*' :app:assembleGithubDebug
       - name: Write APK checksum
         if: ${{ !cancelled() && hashFiles('src/android/app/build/outputs/apk/github/debug/*.apk') != '' }}
         run: |
@@ -107,7 +107,7 @@ jobs:
         if: ${{ !cancelled() && hashFiles('src/android/app/build/outputs/apk/github/debug/*.apk') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Minis-chat-background-test-${{ github.run_number }}
+          name: Minis-advanced-memory-test-${{ github.run_number }}
           path: |
             src/android/app/build/outputs/apk/github/debug/*.apk
             src/android/app/build/outputs/apk/github/debug/*.sha256
