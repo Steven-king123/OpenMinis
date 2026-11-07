@@ -38,6 +38,9 @@ jobs:
           go-version: '1.26.x'
           cache-dependency-path: deps/rclone-mobile/go.sum
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: false
       - name: Install pinned Android tools
         run: |
           sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'cmake;3.22.1' "ndk;$ANDROID_NDK_VERSION"
