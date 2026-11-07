@@ -26,7 +26,15 @@ internal object AdvancedMemoryIdleScheduler {
     private val lock = Any()
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private fun alarm(context: Context) = context.getSystemService(AlarmManager::class.java)
-    private fun jobId(sessionId: String): Int = 0x4D000000 or (sessionId.hashCode() and 0x00FFFFFF)
+    private fun jobId(context: Context, sessionId: String): Int {
+        val p = prefs(context)
+        val key = "job-id:" + sessionId
+        if (p.contains(key)) return p.getInt(key, 0)
+        val next = p.getInt("next-job-id", 0x4D000000)
+        check(next < 0x4E000000) { "Memory job ID capacity reached" }
+        check(p.edit().putInt(key, next).putInt("next-job-id", next + 1).commit())
+        return next
+    }
     private fun pending(context: Context, sessionId: String): PendingIntent = PendingIntent.getBroadcast(
         context, 0, Intent(context, AdvancedMemoryIdleReceiver::class.java).setAction(ACTION)
             .setData(Uri.Builder().scheme("minis-memory").authority("idle").appendPath(sessionId).build())
@@ -38,14 +46,15 @@ internal object AdvancedMemoryIdleScheduler {
         val row = JSONObject().put("token", UUID.randomUUID().toString()).put("epoch", config.epoch).put("due", due)
         // commit before AlarmManager: a process kill can never expose an unpersisted token.
         check(prefs(context).edit().putString(PREFIX + sessionId, row.toString()).commit())
-        context.getSystemService(JobScheduler::class.java).cancel(jobId(sessionId))
+        context.getSystemService(JobScheduler::class.java).cancel(jobId(context, sessionId))
         alarm(context).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, pending(context, sessionId))
     }
 
     fun cancel(context: Context, sessionId: String) = synchronized(lock) {
+        if (sessionId.isBlank() || !prefs(context).contains(PREFIX + sessionId)) return@synchronized
         prefs(context).edit().remove(PREFIX + sessionId).commit()
         alarm(context).cancel(pending(context, sessionId))
-        context.getSystemService(JobScheduler::class.java).cancel(jobId(sessionId))
+        context.getSystemService(JobScheduler::class.java).cancel(jobId(context, sessionId))
     }
 
     private fun row(context: Context, sessionId: String): JSONObject? =
@@ -74,9 +83,9 @@ internal object AdvancedMemoryIdleScheduler {
         }
         // JobService provides a real OS-managed execution window, network constraint and cancellation.
         val scheduler = context.getSystemService(JobScheduler::class.java)
-        val installed = scheduler.getPendingJob(jobId(sessionId))
+        val installed = scheduler.getPendingJob(jobId(context, sessionId))
         if (installed?.extras?.getString("token") == row.optString("token")) return@synchronized
-        val job = JobInfo.Builder(jobId(sessionId), ComponentName(context, AdvancedMemoryIdleJobService::class.java))
+        val job = JobInfo.Builder(jobId(context, sessionId), ComponentName(context, AdvancedMemoryIdleJobService::class.java))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setExtras(extras)
             .setMinimumLatency(0).setPersisted(true).build()
         if (context.getSystemService(JobScheduler::class.java).schedule(job) != JobScheduler.RESULT_SUCCESS)

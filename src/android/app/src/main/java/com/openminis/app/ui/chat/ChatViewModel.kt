@@ -10964,6 +10964,13 @@ class ChatViewModel(
                     advancedStore.records.value.any { it.id == hit.record.id && it.revision == hit.record.revision && !it.deleted }
                 })
             } else ""
+            if (memoryFragment.isNotBlank()) {
+                _memoryToolRecords.value = _memoryToolRecords.value + MemoryToolRecord(
+                    title = "Advanced memory recall", isWrite = false,
+                    preview = "${recalled.size} threshold-filtered candidates",
+                    output = memoryFragment, writtenContent = null, keywords = "automatic recall",
+                )
+            }
             runAgentLoopBody(provider, (systemPrompt ?: "") + memoryFragment, fallbackProviders, fallbackStrategy, prefill, turnGen)
         } catch (ce: kotlinx.coroutines.CancellationException) {
             // [stop-diag] Logged and rethrown; behaviour unchanged.

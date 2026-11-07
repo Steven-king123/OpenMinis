@@ -72,7 +72,10 @@ fun SessionMemorySheet(
 ) {
     val context = LocalContext.current
     var mode by remember { mutableStateOf<MemorySheetMode>(MemorySheetMode.List) }
-    val autoItems = remember(memoryRepository, context) { buildAutoInjectedItems(context, memoryRepository) }
+    val advancedMode = com.openminis.app.memory.AdvancedMemoryRuntime.isEnabled(context)
+    val autoItems = remember(memoryRepository, context, advancedMode) {
+        if (advancedMode) emptyList() else buildAutoInjectedItems(context, memoryRepository)
+    }
 
     // Editing state for the active detail screen. Lives at the sheet level so
     // a single Save button in the header can read the latest buffer without

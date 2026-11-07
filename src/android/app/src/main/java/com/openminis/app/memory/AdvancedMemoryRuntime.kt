@@ -41,11 +41,25 @@ object AdvancedMemoryRuntime {
     fun store(context: Context): AdvancedMemoryStore = memoryStore ?: synchronized(this) {
         memoryStore ?: AdvancedMemoryStore(context.applicationContext).also { memoryStore = it }
     }
-    fun isAvailable(context: Context): Boolean = try { store(context); true }
-    catch (_: Exception) { state.value = "Memory storage unavailable; injection disabled without deleting data."; false }
+    private val initializing = java.util.concurrent.atomic.AtomicBoolean(false)
+    private fun initializeAsync(context: Context) {
+        if (memoryStore != null || !initializing.compareAndSet(false, true)) return
+        scope.launch {
+            try { store(context.applicationContext) }
+            catch (_: Exception) { state.value = "Memory storage unavailable; injection disabled without deleting data." }
+            finally { initializing.set(false) }
+        }
+    }
+    // Called from Compose/getters: never parse a multi-megabyte index on the UI thread.
+    fun isAvailable(context: Context): Boolean {
+        if (memoryStore == null) initializeAsync(context)
+        return memoryStore != null
+    }
 
-    fun isEnabled(context: Context): Boolean = try { store(context).config.value.enabled }
-    catch (_: Exception) { state.value = "Advanced memory unavailable; stored data was not reset."; false }
+    fun isEnabled(context: Context): Boolean {
+        if (memoryStore == null) initializeAsync(context)
+        return memoryStore?.config?.value?.enabled == true
+    }
 
     fun models(context: Context): AdvancedMemoryModels = memoryModels ?: synchronized(this) {
         memoryModels ?: AdvancedMemoryModels(context.applicationContext).also { memoryModels = it }
