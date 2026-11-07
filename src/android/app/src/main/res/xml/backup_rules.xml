@@ -7,6 +7,8 @@
      EncryptedPrefsFactory.safeCreate must be listed here
      (EncryptedPrefsBackupRulesTest enforces it). -->
 <full-backup-content>
+    <!-- Chat wallpapers are local-only, not cloud/device backup payloads. -->
+    <exclude domain="file" path="chat-background/" />
     <exclude domain="sharedpref" path="provider_secrets.xml" />
     <exclude domain="sharedpref" path="provider_secrets_plain_fallback.xml" />
     <exclude domain="sharedpref" path="env_var_values.xml" />

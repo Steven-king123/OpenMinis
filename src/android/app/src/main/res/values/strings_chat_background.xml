@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_background_title">Chat wallpaper</string>
+    <string name="chat_background_choose">Choose image</string>
+    <string name="chat_background_selected">Selected</string>
+    <string name="chat_background_none">None</string>
+    <string name="chat_background_working">Saving…</string>
+    <string name="chat_background_remove">Remove wallpaper</string>
+    <string name="chat_background_dim">Theme overlay: %1$d%%</string>
+    <string name="chat_background_dim_accessibility">Wallpaper theme overlay strength</string>
+    <string name="chat_background_preview">Preview</string>
+    <string name="chat_background_preview_message">Your messages stay easy to read.</string>
+    <string name="chat_background_footer">Applies to all chats. Images up to 20 MB are resized and stored privately on this device, never attached to messages or sent to a model. Higher overlay strength makes the wallpaper more subtle in the current theme.</string>
+    <string name="chat_background_error_size">Choose an image no larger than 20 MB. Your previous wallpaper has not changed.</string>
+    <string name="chat_background_error_image">This image cannot be decoded safely. Try another image. Your previous wallpaper has not changed.</string>
+    <string name="chat_background_error_generic">Could not save the wallpaper setting. Please try again.</string>
+    <string name="chat_background_error_picker">No image picker is available. Please try again.</string>
+</resources>

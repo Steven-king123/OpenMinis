@@ -313,6 +313,8 @@ fun AppearanceScreen(
 
     SettingsScaffold(title = stringResource(R.string.appearance_title), onBack = onBack) {
 
+        com.openminis.app.ui.chat.ChatBackgroundSettings()
+
         // -- Theme --
         // Each row carries its own leading icon + tile colour, mirroring the
         // Provider / Permissions screens. Earlier only the first row had an

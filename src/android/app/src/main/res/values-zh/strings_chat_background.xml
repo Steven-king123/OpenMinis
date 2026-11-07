@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_background_title">聊天背景</string>
+    <string name="chat_background_choose">选择图片</string>
+    <string name="chat_background_selected">已选择</string>
+    <string name="chat_background_none">无</string>
+    <string name="chat_background_working">正在保存…</string>
+    <string name="chat_background_remove">移除背景图片</string>
+    <string name="chat_background_dim">主题遮罩：%1$d%%</string>
+    <string name="chat_background_dim_accessibility">聊天背景主题遮罩强度</string>
+    <string name="chat_background_preview">预览</string>
+    <string name="chat_background_preview_message">让聊天内容保持清晰易读。</string>
+    <string name="chat_background_footer">应用于所有聊天。支持不超过 20 MB 的图片，缩小后仅保存到本机应用私有目录，不会附加到消息或发送给模型。遮罩越强，背景越接近当前主题底色。</string>
+    <string name="chat_background_error_size">请选择不超过 20 MB 的图片，原有背景未更改。</string>
+    <string name="chat_background_error_image">无法安全读取此图片，请选择其他图片。原有背景未更改。</string>
+    <string name="chat_background_error_generic">无法保存背景设置，请重试。</string>
+    <string name="chat_background_error_picker">无法打开图片选择器，请重试。</string>
+</resources>

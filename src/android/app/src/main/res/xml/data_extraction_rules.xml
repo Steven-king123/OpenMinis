@@ -8,6 +8,8 @@
      (EncryptedPrefsBackupRulesTest enforces it). -->
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Wallpaper image stays on this installation. -->
+        <exclude domain="file" path="chat-background/" />
         <exclude domain="sharedpref" path="provider_secrets.xml" />
         <exclude domain="sharedpref" path="provider_secrets_plain_fallback.xml" />
         <exclude domain="sharedpref" path="env_var_values.xml" />
@@ -24,6 +26,8 @@
         <exclude domain="sharedpref" path="minis_network_secrets_plain_fallback.xml" />
     </cloud-backup>
     <device-transfer>
+        <!-- Wallpaper image stays on this installation. -->
+        <exclude domain="file" path="chat-background/" />
         <exclude domain="sharedpref" path="provider_secrets.xml" />
         <exclude domain="sharedpref" path="provider_secrets_plain_fallback.xml" />
         <exclude domain="sharedpref" path="env_var_values.xml" />

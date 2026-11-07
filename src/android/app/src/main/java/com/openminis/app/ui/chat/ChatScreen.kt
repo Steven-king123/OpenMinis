@@ -3775,6 +3775,9 @@ fun ChatScreen(
                 .imePadding()
                 .onGloballyPositioned { chatPaneWidthPx = it.size.width },
         ) {
+        // Local-only wallpaper behind the conversation; bars and controls keep
+        // their existing surfaces. It is never included in model attachments.
+        ChatBackgroundLayer(modifier = Modifier.matchParentSize())
         Column(
             modifier = Modifier.fillMaxSize(),
         ) {
