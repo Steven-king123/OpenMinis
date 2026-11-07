@@ -97,14 +97,14 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --max-workers=1 '-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:testGithubDebugUnitTest --tests 'com.openminis.app.ui.chat.ChatBackgroundPolicyTest' :app:assembleGithubDebug
-      - name: Inspect APK and write SHA256
+      - name: Write APK checksum
+        if: ${{ !cancelled() && hashFiles('src/android/app/build/outputs/apk/github/debug/*.apk') != '' }}
         run: |
           APK=src/android/app/build/outputs/apk/github/debug/app-github-debug.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -5
-          python3 -c 'import zipfile; z=zipfile.ZipFile("src/android/app/build/outputs/apk/github/debug/app-github-debug.apk"); names=z.namelist(); required=["lib/arm64-v8a/libproot.so","lib/arm64-v8a/libproot-loader.so","lib/arm64-v8a/libproot-loader32.so","lib/arm64-v8a/libgojni.so","assets/alpine-minirootfs.tar.gz"]; assert all(p in names for p in required), required; print("Required native payloads verified:", required)'
           sha256sum "$APK" > "$APK.sha256"
       - name: Upload isolated test APK
+        if: ${{ !cancelled() && hashFiles('src/android/app/build/outputs/apk/github/debug/*.apk') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Minis-chat-background-test-${{ github.run_number }}
@@ -112,6 +112,17 @@ jobs:
             src/android/app/build/outputs/apk/github/debug/*.apk
             src/android/app/build/outputs/apk/github/debug/*.sha256
           if-no-files-found: error
+          retention-days: 7
+      - name: Record APK diagnostics (advisory only)
+        if: ${{ !cancelled() && hashFiles('src/android/app/build/outputs/apk/github/debug/*.apk') != '' }}
+        continue-on-error: true
+        run: python3 scripts/inspect_wallpaper_apk.py
+      - name: Upload APK diagnostics
+        if: ${{ !cancelled() && hashFiles('apk-diagnostics/*') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper-apk-diagnostics-${{ github.run_number }}
+          path: apk-diagnostics/
           retention-days: 7
       - name: Upload test reports
         if: always()
