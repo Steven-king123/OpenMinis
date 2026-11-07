@@ -76,6 +76,18 @@ jobs:
             mkdir -p src/android/app/libs
             cp deps/build/rclone/rclone.aar src/android/app/libs/
           fi
+      - name: Save built native dependencies before Gradle
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deps/build
+            deps/talloc
+            src/android/app/libs/rclone.aar
+            src/android/app/src/main/assets/proot-aarch64
+            src/android/app/src/main/assets/alpine-minirootfs.tar.gz
+            src/android/app/src/main/jniLibs/arm64-v8a/libproot.so
+            ~/.android/debug.keystore
+          key: wallpaper-native-v1-${{ runner.os }}-ndk28-go126-${{ hashFiles('deps/rclone-mobile/**', 'deps/build_proot.sh', 'deps/build_rclone_android.sh', 'scripts/prepare_android_sandbox.sh', '.gitmodules') }}
       - name: Configure isolated test installation
         run: python3 scripts/configure_wallpaper_test.py
       - name: Wallpaper static checks
@@ -84,7 +96,7 @@ jobs:
         working-directory: src/android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --max-workers=2 :app:testGithubDebugUnitTest --tests 'com.openminis.app.ui.chat.ChatBackgroundPolicyTest' :app:assembleGithubDebug
+          ./gradlew --no-daemon --max-workers=1 '-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:testGithubDebugUnitTest --tests 'com.openminis.app.ui.chat.ChatBackgroundPolicyTest' :app:assembleGithubDebug
       - name: Inspect APK and write SHA256
         run: |
           APK=src/android/app/build/outputs/apk/github/debug/app-github-debug.apk
