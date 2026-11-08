@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_message_opacity">消息底色不透明度：%1$d%%</string>
+    <string name="chat_message_opacity_accessibility">用户、模型和思考共用的消息底色不透明度</string>
+    <string name="chat_message_opacity_help">仅在设置聊天背景时生效，双方消息与展开思考共用。0% 全透明，100% 不透明；文字不随底色变淡。工具卡片和代码配色保留原样。</string>
+    <string name="chat_message_preview_user">帮我看看这个问题好吗？</string>
+    <string name="chat_message_preview_thinking">思考中……正在梳理关键细节。</string>
+</resources>

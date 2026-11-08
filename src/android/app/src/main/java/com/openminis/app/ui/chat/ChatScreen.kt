@@ -5003,25 +5003,25 @@ fun ChatScreen(
                                 slotKey = "text:${item.block.id}",
                                 markdown = item.messageMarkdown,
                             ) {
-                                // T-android-gc-storm-issue17: collapse oversized frozen
-                                // assistant text before feeding the markdown parser, which
-                                // is the GC-storm hotspot for legacy sessions.
-                                LargeContentGuard(
-                                    content = item.block.content,
-                                    isStreaming = item.isStreaming,
-                                    stableKey = "text:${item.messageId}:${item.block.id}",
-                                ) {
-                                    SideEffect {
-                                        selectionController.rememberMessageMarkdown(item.messageId, item.messageMarkdown)
-                                    }
-                                    StreamingMarkdownText(
+                                ChatMessageBackplate {
+                                    // Keep the original content guard and selection shards.
+                                    LargeContentGuard(
                                         content = item.block.content,
                                         isStreaming = item.isStreaming,
-                                        shardId = TextShardId(
-                                            messageId = item.messageId,
-                                            shardId = "text:${item.block.id}",
-                                        ),
-                                    )
+                                        stableKey = "text:${item.messageId}:${item.block.id}",
+                                    ) {
+                                        SideEffect {
+                                            selectionController.rememberMessageMarkdown(item.messageId, item.messageMarkdown)
+                                        }
+                                        StreamingMarkdownText(
+                                            content = item.block.content,
+                                            isStreaming = item.isStreaming,
+                                            shardId = TextShardId(
+                                                messageId = item.messageId,
+                                                shardId = "text:${item.block.id}",
+                                            ),
+                                        )
+                                    }
                                 }
                             }
                             is FlatChatItem.AssistantMarkdownBlock -> BoundsTrackedBlock(
@@ -5029,30 +5029,31 @@ fun ChatScreen(
                                 slotKey = "mdblock:${item.parentBlockId}:${item.blockIndex}",
                                 markdown = item.messageMarkdown,
                             ) {
-                                // [T-414-usage-tap-band] Rows of the reply's final
-                                // text block carry the capsule's tap band.
-                                UsageTapBandRowScope(
-                                    messageId = item.messageId,
-                                    inFinalTextBlock = item.inFinalTextBlock,
-                                    isLastRow = item.isLastBlockOfMessage,
-                                ) {
-                                LargeContentGuard(
-                                    content = item.rawText,
-                                    isStreaming = item.isStreaming,
-                                    stableKey = "mdblock:${item.messageId}:${item.parentBlockId}:${item.blockIndex}",
-                                ) {
-                                    SideEffect {
-                                        selectionController.rememberMessageMarkdown(item.messageId, item.messageMarkdown)
+                                ChatMessageBackplate {
+                                    // [T-414-usage-tap-band] Keep the final row's tap band.
+                                    UsageTapBandRowScope(
+                                        messageId = item.messageId,
+                                        inFinalTextBlock = item.inFinalTextBlock,
+                                        isLastRow = item.isLastBlockOfMessage,
+                                    ) {
+                                        LargeContentGuard(
+                                            content = item.rawText,
+                                            isStreaming = item.isStreaming,
+                                            stableKey = "mdblock:${item.messageId}:${item.parentBlockId}:${item.blockIndex}",
+                                        ) {
+                                            SideEffect {
+                                                selectionController.rememberMessageMarkdown(item.messageId, item.messageMarkdown)
+                                            }
+                                            MarkdownBlock(
+                                                rawText = item.rawText,
+                                                isStreaming = item.isStreaming,
+                                                shardId = TextShardId(
+                                                    messageId = item.messageId,
+                                                    shardId = "mdblock:${item.parentBlockId}:${item.blockIndex}",
+                                                ),
+                                            )
+                                        }
                                     }
-                                    MarkdownBlock(
-                                        rawText = item.rawText,
-                                        isStreaming = item.isStreaming,
-                                        shardId = TextShardId(
-                                            messageId = item.messageId,
-                                            shardId = "mdblock:${item.parentBlockId}:${item.blockIndex}",
-                                        ),
-                                    )
-                                }
                                 }
                             }
                             is FlatChatItem.AssistantThinking -> {
@@ -5286,27 +5287,27 @@ fun ChatScreen(
                                 slotKey = "legacy",
                                 markdown = item.messageMarkdown,
                             ) {
-                                // [T-414-usage-tap-band] A legacy reply's content is
-                                // its only text and is drawn last: one row, the
-                                // capsule's anchor.
-                                UsageTapBandRowScope(messageId = item.messageId, inFinalTextBlock = true, isLastRow = true) {
-                                LargeContentGuard(
-                                    content = item.content,
-                                    isStreaming = item.isStreaming,
-                                    stableKey = "legacy:${item.messageId}",
-                                ) {
-                                    SideEffect {
-                                        selectionController.rememberMessageMarkdown(item.messageId, item.messageMarkdown)
+                                ChatMessageBackplate {
+                                    // [T-414-usage-tap-band] Legacy content is the final row.
+                                    UsageTapBandRowScope(messageId = item.messageId, inFinalTextBlock = true, isLastRow = true) {
+                                        LargeContentGuard(
+                                            content = item.content,
+                                            isStreaming = item.isStreaming,
+                                            stableKey = "legacy:${item.messageId}",
+                                        ) {
+                                            SideEffect {
+                                                selectionController.rememberMessageMarkdown(item.messageId, item.messageMarkdown)
+                                            }
+                                            StreamingMarkdownText(
+                                                content = item.content,
+                                                isStreaming = item.isStreaming,
+                                                shardId = TextShardId(
+                                                    messageId = item.messageId,
+                                                    shardId = "legacy",
+                                                ),
+                                            )
+                                        }
                                     }
-                                    StreamingMarkdownText(
-                                        content = item.content,
-                                        isStreaming = item.isStreaming,
-                                        shardId = TextShardId(
-                                            messageId = item.messageId,
-                                            shardId = "legacy",
-                                        ),
-                                    )
-                                }
                                 }
                             }
                         }

@@ -87,9 +87,12 @@ internal fun LargeContentBadge(
 ) {
     val context = LocalContext.current
     val sizeLabel = remember(content.length) { formatByteSize(content.length) }
+    val messageTextColor = LocalMessageTextColor.current
 
     Column(
-        modifier = Modifier
+        // Wallpaper callers already supply the shared rounded plate and padding.
+        // Keep the historical badge decoration only without that palette.
+        modifier = if (messageTextColor != null) Modifier.fillMaxWidth() else Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .background(
@@ -111,7 +114,7 @@ internal fun LargeContentBadge(
         Text(
             text = preview,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+            color = messageTextColor ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
         )
 
         Row(
@@ -122,7 +125,7 @@ internal fun LargeContentBadge(
             Text(
                 text = stringResource(R.string.chat_message_large_collapsed_title, sizeLabel),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = messageTextColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 8.dp),
             )
 
@@ -193,6 +196,9 @@ internal fun LargeContentGuard(
     content: String,
     isStreaming: Boolean,
     stableKey: String,
+    // Opt in only when the normal renderer owns its plate inside this guard.
+    // Flat ChatScreen callers already wrap the guard and must not add another.
+    backplate: Boolean = false,
     renderer: @Composable () -> Unit,
 ) {
     // [T-android-streaming-regex-hang] Proactive streaming degrade. While a
@@ -236,7 +242,9 @@ internal fun LargeContentGuard(
                 )
                 Unit
             }
-            DegradedStreamingTail(content)
+            LargeContentFallback(backplate) {
+                DegradedStreamingTail(content)
+            }
             return
         }
     }
@@ -292,11 +300,22 @@ internal fun LargeContentGuard(
     if (expanded) {
         renderer()
     } else {
-        LargeContentBadge(
-            content = content,
-            stableKey = stableKey,
-            onExpand = { expanded = true },
-        )
+        LargeContentFallback(backplate) {
+            LargeContentBadge(
+                content = content,
+                stableKey = stableKey,
+                onExpand = { expanded = true },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LargeContentFallback(backplate: Boolean, content: @Composable () -> Unit) {
+    if (backplate) {
+        ChatMessageBackplate(content = content)
+    } else {
+        content()
     }
 }
 
@@ -329,7 +348,7 @@ private fun DegradedStreamingTail(content: String) {
                 content
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = LocalMessageTextColor.current ?: MaterialTheme.colorScheme.onSurface,
         )
     }
 }

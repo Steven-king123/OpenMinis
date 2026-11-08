@@ -1,7 +1,11 @@
 package com.openminis.app.ui.settings
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -293,7 +297,8 @@ private fun AdvancedMemoryContent(store: AdvancedMemoryStore) {
             title = stringResource(if (target == "summary") R.string.am_summarizer else R.string.am_embedding),
             entries = if (target == "summary") summaries else embeddings,
             selected = if (target == "summary") config.summarizerEntryId else config.embeddingEntryId,
-            providers = providers, onDismiss = { picker = null }, onSelect = { id ->
+            providers = providers, embeddingFirst = target == "embedding",
+            onDismiss = { picker = null }, onSelect = { id ->
                 picker = null
                 update { if (target == "summary") it.copy(summarizerEntryId = id) else it.copy(embeddingEntryId = id) }
             },
@@ -360,15 +365,57 @@ private fun MemoryConfirm(title: String, disclosure: String, onDismiss: () -> Un
 
 @Composable
 private fun MemoryModelDialog(title: String, entries: List<ModelEntry>, selected: String,
-    providers: ProviderConfig, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    providers: ProviderConfig, embeddingFirst: Boolean,
+    onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    var search by rememberSaveable(embeddingFirst) { mutableStateOf("") }
+    val candidates = remember(entries, providers) {
+        val instances = providers.instances.associateBy { it.id }
+        entries.map { entry ->
+            val model = entry.model
+            val provider = instances[entry.providerInstanceId]
+            MemoryModelPickerPolicy.Candidate(
+                entryId = entry.id, modelName = model.displayName, modelId = model.id,
+                providerLabel = provider?.label.orEmpty(), providerName = model.provider,
+                providerType = provider?.providerType?.displayName.orEmpty(),
+                providerId = entry.providerInstanceId, outputModalities = model.outputModalities,
+            )
+        }
+    }
+    val filtered = remember(candidates, search, embeddingFirst) {
+        MemoryModelPickerPolicy.search(candidates, search, embeddingFirst)
+    }
+    val listState = rememberLazyListState()
+    LaunchedEffect(search, embeddingFirst) { listState.scrollToItem(0) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
-        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+        // The dialog supplies a finite height; only the list scrolls, never a nested scroll Column.
+        Column(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+            OutlinedTextField(
+                value = search, onValueChange = { search = it }, singleLine = true,
+                label = { Text(stringResource(R.string.am_picker_search)) },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    if (search.isNotEmpty()) TextButton(onClick = { search = "" }) {
+                        Text(stringResource(R.string.am_picker_clear))
+                    }
+                },
+            )
+            if (embeddingFirst) Text(
+                stringResource(R.string.am_picker_embedding_priority),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            // Clearing a configured model stays available even when a search has no matches.
             SettingsChoiceRow(stringResource(R.string.am_not_selected), selected.isBlank(), { onSelect("") })
-            if (entries.isEmpty()) Text(stringResource(R.string.am_no_models))
-            entries.forEach { entry ->
-                val provider = providers.instances.firstOrNull { it.id == entry.providerInstanceId }
-                SettingsChoiceRow("${entry.model.displayName} · ${provider?.label.orEmpty()}\n${entry.model.id}",
-                    selected == entry.id, { onSelect(entry.id) })
+            if (filtered.isEmpty()) Text(stringResource(
+                if (entries.isEmpty()) R.string.am_no_models else R.string.am_picker_no_matches,
+            ))
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                items(filtered, key = { it.entryId }) { candidate ->
+                    SettingsChoiceRow(
+                        "${candidate.modelName} · ${candidate.providerLabel}\n${candidate.modelId}",
+                        selected == candidate.entryId, { onSelect(candidate.entryId) },
+                    )
+                }
             }
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.am_close)) } })

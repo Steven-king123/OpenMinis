@@ -26,6 +26,9 @@ import kotlinx.coroutines.withContext
 internal object ChatBackgroundPolicy {
     const val FILE_KEY = "chat_background_file"
     const val DIM_KEY = "chat_background_dim"
+    const val MESSAGE_OPACITY_KEY = "chat_message_backplate_opacity"
+    const val DEFAULT_MESSAGE_OPACITY = 0.8f
+    fun messageOpacity(value: Float): Float = if (value.isFinite()) value.coerceIn(0f, 1f) else DEFAULT_MESSAGE_OPACITY
     const val DEFAULT_DIM = 0.65f
     const val MAX_BYTES = 20L * 1024 * 1024
     const val MAX_EDGE = 2048
@@ -133,6 +136,20 @@ internal object ChatBackgroundStore {
                 if (!prefs.edit().putFloat(ChatBackgroundPolicy.DIM_KEY, ChatBackgroundPolicy.dim(value)).commit()) {
                     prefs.edit().putFloat(ChatBackgroundPolicy.DIM_KEY, old).commit()
                     throw IOException("Cannot save wallpaper dim")
+                }
+            }
+        }
+    }
+
+    suspend fun setMessageOpacity(context: Context, value: Float) = operation {
+        withContext(Dispatchers.IO) {
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val prefs = getAppearancePrefs(context)
+                val old = prefs.getFloat(ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY)
+                if (!prefs.edit().putFloat(ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, ChatBackgroundPolicy.messageOpacity(value)).commit()) {
+                    prefs.edit().putFloat(ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, old).commit()
+                    throw IOException("Cannot save message opacity")
                 }
             }
         }

@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -52,7 +53,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Only a private app File and overlay strength, never a bitmap or provider attachment. */
-data class ChatBackgroundState(val file: File?, val dim: Float) {
+data class ChatBackgroundState(val file: File?, val dim: Float, val messageOpacity: Float = ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY) {
     val hasImage: Boolean get() = file != null
 }
 
@@ -68,7 +69,9 @@ fun rememberChatBackgroundState(): State<ChatBackgroundState> {
     fun readDim() = ChatBackgroundPolicy.dim(
         prefs.getFloat(ChatBackgroundPolicy.DIM_KEY, ChatBackgroundPolicy.DEFAULT_DIM),
     )
-    val state = remember(prefs) { mutableStateOf(ChatBackgroundState(null, readDim())) }
+    fun readMessageOpacity() = ChatBackgroundPolicy.messageOpacity(prefs.getFloat(
+        ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY))
+    val state = remember(prefs) { mutableStateOf(ChatBackgroundState(null, readDim(), readMessageOpacity())) }
     var filename by remember(prefs) { mutableStateOf(prefs.getString(ChatBackgroundPolicy.FILE_KEY, null)) }
     var refresh by remember(prefs) { mutableIntStateOf(0) }
     DisposableEffect(prefs) {
@@ -81,10 +84,13 @@ fun rememberChatBackgroundState(): State<ChatBackgroundState> {
             if (key == null || key == ChatBackgroundPolicy.DIM_KEY) {
                 state.value = state.value.copy(dim = readDim())
             }
+            if (key == null || key == ChatBackgroundPolicy.MESSAGE_OPACITY_KEY) {
+                state.value = state.value.copy(messageOpacity = readMessageOpacity())
+            }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         filename = prefs.getString(ChatBackgroundPolicy.FILE_KEY, null)
-        state.value = state.value.copy(dim = readDim())
+        state.value = state.value.copy(dim = readDim(), messageOpacity = readMessageOpacity())
         refresh++
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
@@ -135,7 +141,10 @@ fun ChatBackgroundSettings() {
     var picking by remember { mutableStateOf(false) }
     var draftDim by remember { mutableFloatStateOf(state.dim) }
     var dragging by remember { mutableStateOf(false) }
+    var draftMessageOpacity by remember { mutableFloatStateOf(state.messageOpacity) }
+    var draggingMessageOpacity by remember { mutableStateOf(false) }
     LaunchedEffect(state.dim) { if (!dragging) draftDim = state.dim }
+    LaunchedEffect(state.messageOpacity) { if (!draggingMessageOpacity) draftMessageOpacity = state.messageOpacity }
 
     fun error(message: Int) {
         Toast.makeText(context, context.getString(message), Toast.LENGTH_LONG).show()
@@ -154,6 +163,9 @@ fun ChatBackgroundSettings() {
             } finally {
                 working = false
                 dragging = false
+                draggingMessageOpacity = false
+                draftMessageOpacity = ChatBackgroundPolicy.messageOpacity(getAppearancePrefs(application).getFloat(
+                    ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY))
                 draftDim = ChatBackgroundPolicy.dim(
                     getAppearancePrefs(application).getFloat(ChatBackgroundPolicy.DIM_KEY, ChatBackgroundPolicy.DEFAULT_DIM),
                 )
@@ -212,22 +224,46 @@ fun ChatBackgroundSettings() {
                     valueRange = 0f..1f,
                     modifier = Modifier.semantics { contentDescription = sliderDescription },
                 )
+                Text(stringResource(R.string.chat_message_opacity, (draftMessageOpacity * 100).roundToInt()),
+                    style = MaterialTheme.typography.bodyMedium)
+                val messageOpacityDescription = stringResource(R.string.chat_message_opacity_accessibility)
+                Slider(
+                    value = draftMessageOpacity,
+                    onValueChange = { draggingMessageOpacity = true; draftMessageOpacity = it },
+                    onValueChangeFinished = {
+                        val value = draftMessageOpacity
+                        runOperation { ChatBackgroundStore.setMessageOpacity(application, value) }
+                    },
+                    enabled = enabled, valueRange = 0f..1f,
+                    modifier = Modifier.semantics { contentDescription = messageOpacityDescription },
+                )
+                Text(stringResource(R.string.chat_message_opacity_help), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp))
                 Text(
                     stringResource(R.string.chat_background_preview),
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 Box(
-                    Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp))
+                    Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surface),
                 ) {
                     Wallpaper(state.file, draftDim, Modifier.fillMaxSize())
-                    Text(
-                        stringResource(R.string.chat_background_preview_message),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.align(Alignment.Center).padding(16.dp),
-                    )
+                    val previewStyle = resolveMessageBackplateStyle(state.hasImage,
+                        MaterialTheme.colorScheme.background.luminance() < 0.5f, draftMessageOpacity)
+                    val plate = previewStyle.background
+                    val ink = previewStyle.text
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.chat_message_preview_user), color = ink,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.align(Alignment.End).background(plate, RoundedCornerShape(16.dp)).padding(12.dp))
+                        Text(stringResource(R.string.chat_message_preview_thinking), color = ink,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.background(plate, RoundedCornerShape(16.dp)).padding(12.dp))
+                        Text(stringResource(R.string.chat_background_preview_message), color = ink,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.background(plate, RoundedCornerShape(16.dp)).padding(12.dp))
+                    }
                 }
             }
         }

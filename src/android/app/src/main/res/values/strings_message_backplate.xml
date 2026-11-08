@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_message_opacity">Message background opacity: %1$d%%</string>
+    <string name="chat_message_opacity_accessibility">Shared user, assistant and thinking background opacity</string>
+    <string name="chat_message_opacity_help">Applies to both sides and expanded thinking only when a wallpaper is selected. 0% is transparent, 100% is opaque. Text stays opaque; tool cards and code colours keep their own styles.</string>
+    <string name="chat_message_preview_user">Can you help me with this?</string>
+    <string name="chat_message_preview_thinking">Thinking… checking the important details.</string>
+</resources>

@@ -1,0 +1,19 @@
+{
+  "src/android/app/src/main/java/com/openminis/app/ui/settings/AdvancedMemorySettings.kt": "0ea2a9a3a263839acc9fb2f195a7915bfa6958d668bd0b3aae5c61a9472298cf",
+  "src/android/app/src/main/java/com/openminis/app/ui/settings/MemoryModelPickerPolicy.kt": "8fcc29cf18de03e9890385306c8d6912732549773265682ee6b69a81c3b8eb87",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatBackground.kt": "e4f3042f78b953aaea38327e7496920781f04f3259d582fc643a29a344727c83",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatBackgroundStore.kt": "759962937181009e9ff71773fad48cc178428cae268df58acc97cc0c0227fca2",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatMessageBackplate.kt": "53c359af26bd6f0ce8cbf2b9d213aa8dd7f78e76427e3ef31f386c28e1c9b810",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatUserMessageUI.kt": "6780d5424f33766372ff9b18b541987ed41fbcc1045664a09b097b09db4dc9e7",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatAssistantMessageUI.kt": "6be2f126c35fe18253b90e13f52e364f8a88a429645d3e31dc855ccd805a1c44",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatScreen.kt": "42162a6b574697138f5aac607cd20b4b924aed83ae019db121c33e3d51ecdae7",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt": "40b0830c5c5cc2c4606024382be278061806e361b5740317d7490554ac5d57d6",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/LargeContentGuard.kt": "5a29d37c4ecac98757e4811e6c31388304b83151344adea9384955088fd001f5",
+  "src/android/app/src/main/res/values/strings_memory_picker.xml": "3354050bbfae2f1182caf2f708028e02002d53449b863e529065cecab26c9aeb",
+  "src/android/app/src/main/res/values/strings_message_backplate.xml": "ebfe11f7d4c4272cd1d0d6f39117a73c65165a210943b2f559d97c6ce5544af1",
+  "src/android/app/src/main/res/values-zh/strings_memory_picker.xml": "95dd166b2c54654a31390d18c63e2b5f410339e0651e159d5e6678f2c8674923",
+  "src/android/app/src/main/res/values-zh/strings_message_backplate.xml": "10bbefbf168f5527b09e2d614d8fca4a6f0f63644280ed485626e0c00f22810d",
+  "src/android/app/src/test/java/com/openminis/app/ui/settings/MemoryModelPickerPolicyTest.kt": "b0987d759f61f9dc50d81540225a56840311150e3b3038d202285d93a91a2e61",
+  "src/android/app/src/test/java/com/openminis/app/ui/chat/ChatMessageBackplateStyleTest.kt": "2a5f00cb2a4b4bd3a7948f098dfe0cac7ed5f9ca5771aff859eec33d0c9c0435",
+  "scripts/configure_server_dev.py": "7758e9b17cf185373cfff132403a7364bce30737de288f38f833d329ac8db0f1"
+}

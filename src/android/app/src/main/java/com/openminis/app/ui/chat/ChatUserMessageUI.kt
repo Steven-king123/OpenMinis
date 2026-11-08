@@ -309,6 +309,7 @@ internal fun UserMessageBubble(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val isQueued = message.isQueued
+    val backplate = messageBackplateStyle()
     val haptics = LocalHapticFeedback.current
 
     BoxWithConstraints(
@@ -376,18 +377,27 @@ internal fun UserMessageBubble(
                 }
 
                 if (message.content.isNotBlank()) {
-                    // Queued: transparent bg + dashed border + dimmed text +
-                    // a red withdraw button alongside. Mirrors iOS
-                    // AIChatView.swift queued-bubble overlay.
+                    // Queued keeps its dashed outline and red withdraw action.
+                    // With wallpaper, use the same readable fill/ink as sent text;
+                    // otherwise retain the original transparent/dimmed appearance.
                     val secondaryTextColor = ChatColors.secondaryText
                     val userBubbleColor = ChatColors.userBubble
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        val textColor = if (isQueued) secondaryTextColor else MaterialTheme.colorScheme.onSurface
-                        val bubbleBg = if (isQueued) Color.Transparent else userBubbleColor
-                        val shape = RoundedCornerShape(18.dp)
+                        val textColor = when {
+                            backplate.active -> backplate.text
+                            isQueued -> secondaryTextColor
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+                        val bubbleBg = when {
+                            backplate.active -> backplate.background
+                            isQueued -> Color.Transparent
+                            else -> userBubbleColor
+                        }
+                        val cornerRadius = if (backplate.active) 16.dp else 18.dp
+                        val shape = RoundedCornerShape(cornerRadius)
                         val dashedStroke = if (isQueued) {
                             Modifier.drawBehind {
                                 val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
@@ -396,9 +406,9 @@ internal fun UserMessageBubble(
                                         floatArrayOf(6.dp.toPx(), 4.dp.toPx()), 0f
                                     ),
                                 )
-                                val r = 18.dp.toPx()
+                                val r = cornerRadius.toPx()
                                 drawRoundRect(
-                                    color = secondaryTextColor.copy(alpha = 0.5f),
+                                    color = (if (backplate.active) backplate.text else secondaryTextColor).copy(alpha = 0.5f),
                                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
                                     style = stroke,
                                 )
@@ -433,6 +443,9 @@ internal fun UserMessageBubble(
                                 content = message.content,
                                 isStreaming = false,
                                 stableKey = "user:${message.id}",
+                                // Normal Text owns the user plate; only the guard's
+                                // replacement needs a shared plate + text local.
+                                backplate = backplate.active,
                             ) {
                                 Text(
                                     // [T-in-chat-search] matches painted in place
@@ -443,7 +456,10 @@ internal fun UserMessageBubble(
                                         .background(bubbleBg, shape)
                                         .clip(shape)
                                         .then(dashedStroke)
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                        .padding(
+                                            horizontal = if (backplate.active) 12.dp else 14.dp,
+                                            vertical = if (backplate.active) 12.dp else 8.dp,
+                                        ),
                                 )
                             }
                         }

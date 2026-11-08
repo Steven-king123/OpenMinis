@@ -206,7 +206,9 @@ private data class MdColors(
 private fun currentMdColors(): MdColors {
     val c = com.openminis.app.ui.theme.LocalChatPalette.current
     return MdColors(
-        text = c.primaryText,
+        // Backplates override ordinary text only; code and link colours below
+        // keep their original syntax/inline styling and independent backgrounds.
+        text = LocalMessageTextColor.current ?: c.primaryText,
         codeText = c.codeBlockText,
         codeBg = c.codeBlockBg,
         inlineCodeText = c.inlineCodeText,
@@ -503,7 +505,8 @@ private fun MdText(
     // the controller's snapshot state inside drawWithContent invalidates only
     // the outer layer — no recomposition, no re-layout.
     val fadeMaskColor = ChatColors.background
-    val fadeMaskModifier = if (fadeController != null) {
+    // A flat theme-colour fake fade cannot reconstruct wallpaper under a translucent plate.
+    val fadeMaskModifier = if (fadeController != null && LocalMessageTextColor.current == null) {
         Modifier
             .graphicsLayer()
             .drawWithContent {

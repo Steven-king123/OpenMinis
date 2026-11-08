@@ -1,13 +1,8 @@
-name: Advanced memory test APK
+# Dev builds now run on the configured private server. Keep this legacy
+# workflow manual-only: pushing source must not start a GitHub-hosted build.
+# This legacy workflow does not use the stable private Dev signing key.
+name: Legacy memory test APK (manual only)
 on:
-  push:
-    branches: [feature/advanced-memory]
-    paths:
-      - 'src/android/**'
-      - 'src/shared/**'
-      - 'deps/**'
-      - 'scripts/**'
-      - '.github/workflows/chat-background-build.yml'
   workflow_dispatch:
 permissions:
   contents: read

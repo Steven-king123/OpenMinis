@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="am_picker_search">搜索模型名称、ID 或提供商</string>
+    <string name="am_picker_clear">清空</string>
+    <string name="am_picker_no_matches">没有匹配的模型，请尝试其他名称、ID 或提供商。</string>
+    <string name="am_picker_embedding_priority">根据声明的输出能力或名称，疑似嵌入模型优先显示；其他兼容提供商的模型仍可选择。此排序不代表已验证嵌入 API 可用。</string>
+</resources>

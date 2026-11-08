@@ -518,13 +518,16 @@ internal fun AssistantMessageView(
                             content = block.content,
                             isStreaming = streaming,
                             stableKey = "legacy-text:${message.id}:${block.id}",
+                            backplate = true,
                         ) {
-                            StreamingMarkdownText(
-                                content = block.content,
-                                // Only the trailing text block is "still streaming"; earlier
-                                // text blocks (before a tool call) are frozen.
-                                isStreaming = streaming,
-                            )
+                            ChatMessageBackplate {
+                                StreamingMarkdownText(
+                                    content = block.content,
+                                    // Only the trailing text block is "still streaming"; earlier
+                                    // text blocks (before a tool call) are frozen.
+                                    isStreaming = streaming,
+                                )
+                            }
                         }
                     }
                 }
@@ -547,11 +550,14 @@ internal fun AssistantMessageView(
                 content = message.content,
                 isStreaming = message.isStreaming,
                 stableKey = "legacy-fallback:${message.id}",
+                backplate = true,
             ) {
-                StreamingMarkdownText(
-                    content = message.content,
-                    isStreaming = message.isStreaming,
-                )
+                ChatMessageBackplate {
+                    StreamingMarkdownText(
+                        content = message.content,
+                        isStreaming = message.isStreaming,
+                    )
+                }
             }
         }
 
@@ -1110,6 +1116,8 @@ internal fun ThinkingBlock(block: AssistantBlock, isStreaming: Boolean, isLast: 
         if (shouldAutoCollapseThinking(isStreaming, userIntent)) expanded = false
     }
     val thinkingBlue = Color(0xFF007AFF)
+    val backplate = messageBackplateStyle()
+    val thinkingShape = RoundedCornerShape(if (backplate.active) 16.dp else 12.dp)
     val charCount = block.content.length
     val charLabel = when {
         charCount >= 1000 -> "${charCount / 1000}K"
@@ -1137,10 +1145,17 @@ internal fun ThinkingBlock(block: AssistantBlock, isStreaming: Boolean, isLast: 
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .background(thinkingBlue.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-            .border(0.5.dp, thinkingBlue.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-            .clip(RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .background(
+                if (backplate.active) backplate.background else thinkingBlue.copy(alpha = 0.06f),
+                thinkingShape,
+            )
+            .then(
+                if (backplate.active) Modifier else Modifier.border(
+                    0.5.dp, thinkingBlue.copy(alpha = 0.15f), thinkingShape,
+                )
+            )
+            .clip(thinkingShape)
+            .padding(horizontal = 12.dp, vertical = if (backplate.active) 12.dp else 8.dp),
     ) {
         Box {
             DropdownMenu(expanded = showThinkingMenu, onDismissRequest = { showThinkingMenu = false }) {
@@ -1359,7 +1374,7 @@ internal fun ThinkingBlock(block: AssistantBlock, isStreaming: Boolean, isLast: 
                 Text(
                     text = displayContent,
                     fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                    color = if (backplate.active) backplate.text else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
                     lineHeight = 19.sp,
                 )
             }
