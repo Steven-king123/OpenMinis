@@ -383,7 +383,9 @@ internal fun InputCircleButton(
     Box(
         modifier = Modifier
             .size(38.dp)
-            .background(ChatColors.inputIconBg, CircleShape)
+            // Only the + / slash circle's backing is glass; its glyph stays sharp.
+            // OFF uses the original fill, with the original border kept below.
+            .chatGlassSurface(shape = CircleShape, fallback = ChatColors.inputIconBg)
             .border(0.5.dp, ChatColors.inputIconBorder, CircleShape)
             .clip(CircleShape)
             .clickable(onClick = onClick),
@@ -419,7 +421,12 @@ internal fun MicButton(
     Box(
         modifier = Modifier
             .size(38.dp)
-            .background(bg, CircleShape)
+            // Keep the recording warning fill verbatim; only idle mic/keyboard
+            // backing is glass. The icon and locale badge are never blurred.
+            .then(
+                if (isRecording) Modifier.background(bg, CircleShape)
+                else Modifier.chatGlassSurface(shape = CircleShape, fallback = bg),
+            )
             .border(0.5.dp, borderColor, CircleShape)
             .clip(CircleShape)
             .combinedClickable(
@@ -1131,7 +1138,10 @@ internal fun FloatingToolStatusBar(
                 .height(barHeight)
                 .align(Alignment.BottomCenter)
                 .shadow(elevation = 8.dp, shape = RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(alpha = 0.06f), spotColor = Color.Black.copy(alpha = 0.12f))
-                .background(ChatColors.inputBg, RoundedCornerShape(10.dp))
+                // Blur only the Minis Computer bar's backing, not its title,
+                // status/pager icons or the separately overlaid thumbnail.
+                // Expanded tool details and preview content keep their own surfaces.
+                .chatGlassSurface(shape = RoundedCornerShape(10.dp), fallback = ChatColors.inputBg)
                 .border(0.5.dp, ChatColors.toolBorder, RoundedCornerShape(10.dp))
                 .padding(start = barStartPadding, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

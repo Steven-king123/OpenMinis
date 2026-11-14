@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_glass_title">聊天控件玻璃效果</string>
+    <string name="chat_glass_help">模糊顶部栏、输入框和浮动工具状态条背后的内容，不改变消息透明度。Android 12 及以上支持背景模糊，旧设备使用不透明底色。</string>
+    <string name="chat_background_resize_title">背景随输入区域自动缩放</string>
+    <string name="chat_background_resize_help">关闭：键盘弹出或输入框高度变化时，背景固定在聊天视口。开启：背景随可用聊天区域自适应缩放裁切。</string>
+    <string name="chat_background_preview_keyboard">预览键盘</string>
+    <string name="chat_background_preview_keyboard_label">键盘预览区域</string>
+    <string name="chat_glass_preview_toolbar">聊天 · 玻璃效果预览</string>
+    <string name="chat_glass_preview_status">工具运行中…</string>
+    <string name="chat_glass_preview_input">输入消息…</string>
+</resources>

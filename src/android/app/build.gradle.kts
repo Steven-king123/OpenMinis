@@ -442,6 +442,8 @@ dependencies {
 
     // Coil (image loading)
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Pinned stable backdrop blur; controls remain a sharp foreground layer.
+    implementation("dev.chrisbanes.haze:haze:1.6.10")
 
     // Markdown rendering (mikepenz multiplatform-markdown-renderer)
     implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.33.0")

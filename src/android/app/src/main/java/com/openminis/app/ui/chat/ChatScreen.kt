@@ -2970,8 +2970,16 @@ fun ChatScreen(
         // map (which is last-writer-wins across sessions).
         LocalMarkdownSessionId provides sessionId,
     ) {
+    val wallpaperState by rememberChatBackgroundState()
+    ChatGlassHost {
+    Box(Modifier.fillMaxSize().background(ChatColors.background)) {
+    // One complete wallpaper source always covers the top bar too. Only the
+    // adaptive variant consumes IME insets; controls are never children of this source.
+    Box(Modifier.matchParentSize().then(if (wallpaperState.resizeWithInput) Modifier.imePadding() else Modifier)) {
+        ChatBackgroundLayer(Modifier.matchParentSize().chatGlassSource())
+    }
     Scaffold(
-        containerColor = ChatColors.background,
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0),
         // [T-port-sched-pill] The top bar slot is the app bar plus, below it,
         // the scheduled-task pill, so the list (padded by the Scaffold) starts
@@ -2979,6 +2987,7 @@ fun ChatScreen(
         // its old indentation to keep this diff small.
         topBar = { Column {
             TopAppBar(
+                modifier = Modifier.chatGlassSurface(RoundedCornerShape(0.dp), ChatColors.background),
                 title = {
                     // iOS-style centered layout: "Minis" + group row + provider·model row
                     Box(
@@ -3739,8 +3748,8 @@ fun ChatScreen(
                 },
                 windowInsets = WindowInsets.statusBars,
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                    containerColor = ChatColors.background.copy(alpha = 0.92f),
-                    scrolledContainerColor = ChatColors.background.copy(alpha = 0.92f),
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
                 ),
                 // [T-android-topbar-shrink] 76dp → 68dp. The earlier
                 // T-topbar-model-row-clip fix bumped 60dp → 76dp to give the
@@ -3775,9 +3784,7 @@ fun ChatScreen(
                 .imePadding()
                 .onGloballyPositioned { chatPaneWidthPx = it.size.width },
         ) {
-        // Local-only wallpaper behind the conversation; bars and controls keep
-        // their existing surfaces. It is never included in model attachments.
-        ChatBackgroundLayer(modifier = Modifier.matchParentSize())
+        // Wallpaper is drawn once in the independent full-viewport source above.
         Column(
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -4646,6 +4653,7 @@ fun ChatScreen(
                         // [T-android-session-entering-dots] Fades the first
                         // rows in under the leaving dots; 1f at all other times.
                         .graphicsLayer { alpha = listEntryAlpha }
+                        .chatGlassSource(zIndex = 1f)
                         // [T-android-userask-edge-bounce] See childScrollWatch.
                         .nestedScroll(childScrollWatch)
                         // [T-android-chat-max-content-width] Cap the reading
@@ -6216,6 +6224,7 @@ fun ChatScreen(
                 // from the backdrop by a symmetric soft shadow painted by hand
                 // (Android's Modifier.shadow only casts downward).
                 val inputBgArgb = ChatColors.inputBg.toArgb()
+                val glassInputActive = chatGlassIsActive()
                 val shadowPaint = remember(inputBgArgb) {
                     android.graphics.Paint().apply {
                         color = inputBgArgb
@@ -6353,7 +6362,9 @@ fun ChatScreen(
                                     }
                             } else Modifier,
                         )
+                        .chatGlassSurface(RoundedCornerShape(20.dp), Color.Transparent)
                         .drawBehind {
+                            if (glassInputActive) return@drawBehind
                             val radiusPx = 20.dp.toPx()
                             val canvas = drawContext.canvas.nativeCanvas
                             // Pass 1: symmetric ambient halo — small blur, low alpha.
@@ -8248,6 +8259,9 @@ fun ChatScreen(
         )
         }
     }
+
+    } // full viewport wallpaper layer
+    } // ChatGlassHost
 
     // Browser bottom sheet
     if (showBrowserSheet) {

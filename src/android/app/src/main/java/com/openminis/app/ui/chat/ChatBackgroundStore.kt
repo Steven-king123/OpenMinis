@@ -27,6 +27,10 @@ internal object ChatBackgroundPolicy {
     const val FILE_KEY = "chat_background_file"
     const val DIM_KEY = "chat_background_dim"
     const val MESSAGE_OPACITY_KEY = "chat_message_backplate_opacity"
+    const val GLASS_ENABLED_KEY = "chat_glass_enabled"
+    const val RESIZE_WITH_INPUT_KEY = "chat_background_resize_with_input"
+    const val DEFAULT_GLASS_ENABLED = false
+    const val DEFAULT_RESIZE_WITH_INPUT = false
     const val DEFAULT_MESSAGE_OPACITY = 0.8f
     fun messageOpacity(value: Float): Float = if (value.isFinite()) value.coerceIn(0f, 1f) else DEFAULT_MESSAGE_OPACITY
     const val DEFAULT_DIM = 0.65f
@@ -150,6 +154,31 @@ internal object ChatBackgroundStore {
                 if (!prefs.edit().putFloat(ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, ChatBackgroundPolicy.messageOpacity(value)).commit()) {
                     prefs.edit().putFloat(ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, old).commit()
                     throw IOException("Cannot save message opacity")
+                }
+            }
+        }
+    }
+
+    suspend fun setGlassEnabled(context: Context, value: Boolean) = setBoolean(
+        context, ChatBackgroundPolicy.GLASS_ENABLED_KEY, value, ChatBackgroundPolicy.DEFAULT_GLASS_ENABLED,
+    )
+
+    suspend fun setResizeWithInput(context: Context, value: Boolean) = setBoolean(
+        context, ChatBackgroundPolicy.RESIZE_WITH_INPUT_KEY, value, ChatBackgroundPolicy.DEFAULT_RESIZE_WITH_INPUT,
+    )
+
+    private suspend fun setBoolean(context: Context, key: String, value: Boolean, default: Boolean) = operation {
+        withContext(Dispatchers.IO) {
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val prefs = getAppearancePrefs(context)
+                val existed = prefs.contains(key)
+                val old = prefs.getBoolean(key, default)
+                if (!prefs.edit().putBoolean(key, value).commit()) {
+                    prefs.edit().apply {
+                        if (existed) putBoolean(key, old) else remove(key)
+                    }.commit()
+                    throw IOException("Cannot save chat appearance preference")
                 }
             }
         }

@@ -1010,47 +1010,77 @@ fun splitMarkdownIntoBlockTexts(content: String): List<String> {
     if (content.isEmpty()) return emptyList()
     val out = mutableListOf<String>()
     val cur = StringBuilder()
-    var inFence = false
     val lines = content.lines()
+    val protected = displayMathProtectedLines(lines)
+    var fence: Pair<Char, Int>? = null
     fun flush() {
-        if (cur.isNotEmpty()) {
-            // Trim trailing empty line we used as boundary, but keep
-            // intentional internal newlines.
-            out.add(cur.toString().trimEnd('\n'))
-            cur.clear()
-        }
+        if (cur.isNotEmpty()) { out.add(cur.toString().trimEnd('\n')); cur.clear() }
     }
-    for (line in lines) {
+    lines.forEachIndexed { index, line ->
         val trimmed = line.trimStart()
-        val isFence = trimmed.startsWith("```")
-        if (isFence) {
-            // A fence line both closes the previous fragment (when we're
-            // not inside a fence) and opens/closes the fence fragment.
-            if (!inFence) {
-                flush()
-                cur.append(line).append('\n')
-                inFence = true
-            } else {
-                cur.append(line).append('\n')
-                inFence = false
-                flush()
-            }
-            continue
-        }
-        if (inFence) {
+        val marker = markdownFenceMarker(trimmed)
+        val currentFence = fence
+        if (currentFence != null) {
             cur.append(line).append('\n')
-            continue
-        }
-        if (line.isBlank()) {
-            // Boundary: paragraph end. Drop the blank line itself; it
-            // signals the split.
+            if (marker != null && marker.first == currentFence.first && marker.second >= currentFence.second &&
+                trimmed.drop(marker.second).isBlank()) { fence = null; flush() }
+        } else if (marker != null) {
+            flush(); cur.append(line).append('\n'); fence = marker
+        } else if (line.isBlank() && !protected[index]) {
             flush()
-            continue
-        }
-        cur.append(line).append('\n')
+        } else cur.append(line).append('\n')
     }
     flush()
     return out
+}
+
+private fun markdownFenceMarker(trimmed: String): Pair<Char, Int>? {
+    val first = trimmed.firstOrNull() ?: return null
+    if (first != '`' && first != '~') return null
+    val count = trimmed.takeWhile { it == first }.length
+    return if (count >= 3) first to count else null
+}
+
+/** Structural prefix only; actual math source is never rewritten. */
+private fun mathScanLine(line: String): String {
+    var text = line.trimStart()
+    while (isBlockquoteLine(text)) text = text.removePrefix(">").removePrefix(" ").trimStart()
+    return when {
+        text.matches(taskListItemRegex) -> text.replaceFirst(taskListPrefixRegex, "")
+        text.matches(bulletListItemRegex) -> text.replaceFirst(bulletListPrefixRegex, "")
+        text.matches(numberedListItemRegex) -> text.replaceFirst(numberedListPrefixRegex, "")
+        else -> text
+    }
+}
+
+/** Protect paired spans and the recoverable live tail before any LazyColumn fragmentation. */
+private fun displayMathProtectedLines(lines: List<String>): BooleanArray {
+    val protected = BooleanArray(lines.size)
+    val scan = lines.map(::mathScanLine)
+    var fence: Pair<Char, Int>? = null
+    var i = 0
+    while (i < lines.size) {
+        val marker = markdownFenceMarker(scan[i])
+        val current = fence
+        if (current != null) {
+            if (marker != null && marker.first == current.first && marker.second >= current.second &&
+                scan[i].drop(marker.second).isBlank()) fence = null
+            i++; continue
+        }
+        if (marker != null) { fence = marker; i++; continue }
+        val opening = DisplayMathBoundary.start(scan[i])
+        if (opening == null) { i++; continue }
+        val closing = DisplayMathBoundary.close(scan, i, opening)
+        var end = closing?.line ?: i
+        if (closing == null) {
+            while (end + 1 < lines.size && end - i < 511 &&
+                !DisplayMathBoundary.isRecoveryBoundary(scan[end + 1]) &&
+                DisplayMathBoundary.start(scan[end + 1]) == null) end++
+        }
+        for (j in i..end) protected[j] = true
+        i = end + 1
+    }
+    return protected
 }
 
 /**
@@ -1061,7 +1091,7 @@ fun splitMarkdownIntoBlockTexts(content: String): List<String> {
  */
 private fun isFenceFragment(fragment: String): Boolean {
     val firstLine = fragment.lineSequence().firstOrNull { it.isNotBlank() } ?: return false
-    return firstLine.trimStart().startsWith("```")
+    return markdownFenceMarker(firstLine.trimStart()) != null
 }
 
 /**
@@ -1605,6 +1635,7 @@ internal fun chatSearchMarkdownPieces(rawText: String): List<ChatSearchPiece> {
             val p = "${prefix}b$i"
             when (block) {
                 is MdBlock.Paragraph -> add(p, inline(block.raw))
+                is MdBlock.RawMath -> add(p, block.raw)
                 is MdBlock.Heading -> add(p, inline(block.text))
                 is MdBlock.CodeBlock -> add(p, block.code, whole = true)
                 is MdBlock.BlockQuote -> walk(block.innerBlocks, "$p/q/")
@@ -1644,6 +1675,7 @@ private sealed class MdBlock(val raw: String) {
     class Audio(raw: String, val alt: String, val url: String) : MdBlock(raw)
     /** T155: display-mode LaTeX rendered via KaTeX (`$$…$$` or `\[…\]`). */
     class MathDisplay(raw: String, val latex: String) : MdBlock(raw)
+    class RawMath(raw: String) : MdBlock(raw)
 }
 
 private val nativeVideoExts = setOf("mp4", "mov", "m4v", "avi", "mkv", "webm")
@@ -1693,6 +1725,11 @@ private val numberedListPrefixRegex = Regex("^\\d+[.)\\s]+")
  * Anything else (e.g. `>foo`, `>5`, `>=`) is regular prose — likely shell
  * output or a comparison emitted by the LLM, not an intentional quote.
  */
+private fun isHeadingLine(trimmed: String): Boolean {
+    val hashes = trimmed.takeWhile { it == '#' }.length
+    return hashes in 1..6 && (hashes == trimmed.length || trimmed[hashes].isWhitespace())
+}
+
 private fun isBlockquoteLine(trimmed: String): Boolean {
     if (!trimmed.startsWith(">")) return false
     if (trimmed.length == 1) return true
@@ -1850,7 +1887,7 @@ private data class ListItem(val text: String, val children: List<MdBlock> = empt
  */
 private fun ListItem.withWideMathSplit(): ListItem {
     val split = splitListItemBody(text)
-    return if (split.any { it is MdBlock.MathDisplay || it is MdBlock.Table }) copy(children = split) else this
+    return if (split.any { it is MdBlock.MathDisplay || it is MdBlock.RawMath || it is MdBlock.Table }) copy(children = split) else this
 }
 
 /**
@@ -1868,6 +1905,9 @@ private fun ListItem.withWideMathSplit(): ListItem {
  * list swallowed it. iOS (cmark-gfm) renders the table inside the item.
  */
 private fun splitListItemBody(text: String): List<MdBlock> {
+    if (text.lineSequence().any { DisplayMathBoundary.start(it) != null }) {
+        return parseMarkdownBlocksBlocking(text)
+    }
     if (!text.contains('|')) return splitParagraphOnWideMath(text)
     val lines = text.lines()
     val out = mutableListOf<MdBlock>()
@@ -1904,8 +1944,8 @@ private data class TaskItem(val checked: Boolean, val text: String, val children
 
 /** [T-android-math-overflow-wrap] Same wide-math split as [ListItem.withWideMathSplit]. */
 private fun TaskItem.withWideMathSplit(): TaskItem {
-    val split = splitParagraphOnWideMath(text)
-    return if (split.any { it is MdBlock.MathDisplay }) copy(children = split) else this
+    val split = splitListItemBody(text)
+    return if (split.any { it is MdBlock.MathDisplay || it is MdBlock.RawMath }) copy(children = split) else this
 }
 
 // ─── Block parser ───────────────────────────────────────────────────────────
@@ -2058,12 +2098,32 @@ internal fun debugParseBlockShapes(content: String): List<String> =
             val children = when (b) {
                 is MdBlock.UnorderedList -> b.items.flatMap { it.children }
                 is MdBlock.OrderedList -> b.items.flatMap { it.children }
+                is MdBlock.TaskList -> b.items.flatMap { it.children }
                 else -> emptyList()
             }
             val name = b::class.simpleName.orEmpty()
             if (children.isEmpty()) name else "$name[${children.joinToString(",") { it::class.simpleName.orEmpty() }}]"
         }
     }
+
+private fun collectDisplayLatex(blocks: List<MdBlock>): List<String> = buildList {
+    for (block in blocks) when (block) {
+        is MdBlock.MathDisplay -> add(block.latex)
+        is MdBlock.BlockQuote -> addAll(collectDisplayLatex(block.innerBlocks))
+        is MdBlock.UnorderedList -> block.items.forEach { addAll(collectDisplayLatex(it.children)) }
+        is MdBlock.OrderedList -> block.items.forEach { addAll(collectDisplayLatex(it.children)) }
+        is MdBlock.TaskList -> block.items.forEach { addAll(collectDisplayLatex(it.children)) }
+        else -> Unit
+    }
+}
+internal fun debugCollectDisplayLatex(content: String): List<String> =
+    kotlinx.coroutines.runBlocking { collectDisplayLatex(parseMarkdownBlocks(content)) }
+internal fun debugIncrementalDisplayLatex(chunks: List<String>): List<String> = kotlinx.coroutines.runBlocking {
+    val state = IncrementalParseState()
+    var last: List<MdBlock> = emptyList()
+    for (content in chunks) last = parseMarkdownIncremental(content, state)
+    collectDisplayLatex(last)
+}
 
 /** Test hook: same, but replayed incrementally as the text grows. */
 internal fun debugParseIncrementalRaws(chunks: List<String>): List<String> =
@@ -2104,48 +2164,29 @@ internal fun stableParsePrefixEnd(content: String, searchFrom: Int): Int {
  * Refusing costs only re-parse work; accepting wrongly changes the render.
  */
 internal fun isSealedBoundary(content: String, end: Int): Boolean {
-    var fences = 0
-    var maths = 0
-    var bracketMathOpen = false
-    // Last non-blank line before [end] — a list only ever ends on a list item
-    // or an indented line, so this is what decides whether one is still open.
-    var lastNonBlankStart = -1
-    var lastNonBlankEnd = -1
-    var lineStart = 0
-    while (lineStart < end) {
-        var lineEnd = content.indexOf('\n', lineStart)
-        if (lineEnd < 0 || lineEnd > end) lineEnd = end
-        var p = lineStart
-        while (p < lineEnd && (content[p] == ' ' || content[p] == '\t')) p++
-        if (bracketMathOpen) {
-            // Mirrors the parser's `\[` loop: the first line containing `\]`
-            // anywhere closes the span.
-            if (content.indexOf("\\]", lineStart).let { it in lineStart until lineEnd }) {
-                bracketMathOpen = false
-            }
-        } else if (content.startsWith("\\[", p)) {
-            bracketMathOpen = content.indexOf("\\]", p + 2).let { it !in 0 until lineEnd }
-        }
-        if (content.startsWith("```", p)) fences++
-        else if (content.startsWith("$$", p)) {
-            // A single-line `$$ … $$` opens and closes on the same line.
-            maths += if (content.indexOf("$$", p + 2).let { it in 0 until lineEnd }) 0 else 1
-        }
-        if (p < lineEnd && content.substring(p, lineEnd).isNotBlank()) {
-            lastNonBlankStart = lineStart
-            lastNonBlankEnd = lineEnd
-        }
-        lineStart = lineEnd + 1
+    if (end !in 0..content.length) return false
+    val lines = content.lines()
+    val protected = displayMathProtectedLines(lines)
+    var fence: Pair<Char, Int>? = null
+    var position = 0
+    var lastNonBlank: String? = null
+    for ((index, line) in lines.withIndex()) {
+        if (position >= end) break
+        val marker = markdownFenceMarker(mathScanLine(line))
+        val current = fence
+        if (current == null) {
+            if (marker != null) fence = marker
+        } else if (marker != null && marker.first == current.first && marker.second >= current.second &&
+            mathScanLine(line).drop(marker.second).isBlank()) fence = null
+        // A blank inside a paired/pending display span is never a stable prefix,
+        // including indented list/quoted formulas before fragmenting.
+        if (protected[index] && position + line.length + 1 >= end) return false
+        if (line.isNotBlank()) lastNonBlank = line
+        position += line.length + 1
     }
-    if (fences % 2 != 0 || maths % 2 != 0 || bracketMathOpen) return false
-    if (lastNonBlankStart < 0) return true
-    val prev = content.substring(lastNonBlankStart, lastNonBlankEnd)
-    if (!isListContinuationLine(prev)) return true
-    // A list is (possibly) open. The blank line is a boundary only if the
-    // next non-blank line is COMPLETE and would break the list — neither a
-    // list item nor indented. An unterminated line may still grow into one
-    // ("-" -> "- beta", "" -> "   more"), and no next line at all means the
-    // stream has not decided yet.
+    if (fence != null) return false
+    val previous = lastNonBlank ?: return true
+    if (!isListContinuationLine(previous)) return true
     var q = end
     while (q < content.length) {
         val nl = content.indexOf('\n', q)
@@ -2221,7 +2262,7 @@ private suspend fun parseMarkdownIncremental(
 
 private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
     val blocks = mutableListOf<MdBlock>()
-    val lines = content.lines()
+    val lines = content.lines().toMutableList()
     var i = 0
     // Counter so we don't query coroutineContext on EVERY line (small but
     // measurable allocation overhead at ~thousands of lines per pass).
@@ -2237,94 +2278,54 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
         val trimmed = line.trimStart()
 
         when {
-            // T155: display math `$$...$$` (single-line or multi-line) and `\[...\]`
-            trimmed.startsWith("$$") -> {
-                val rest = trimmed.removePrefix("$$")
-                val inlineEnd = rest.indexOf("$$")
-                if (inlineEnd >= 0) {
-                    // Same-line `$$ … $$`
-                    val latex = rest.substring(0, inlineEnd).trim()
-                    blocks.add(MdBlock.MathDisplay(line, latex))
-                    i++
-                } else {
-                    // [T-android-latex-code-mask] Multi-line: LOOK AHEAD for the
-                    // closing `$$` and validate it before committing. The old
-                    // loop scanned forward unconditionally, so an unclosed `$$`
-                    // (a model forgetting to close it, or prose explaining
-                    // LaTeX) paired with a `$$` inside a LATER ``` fence and
-                    // swallowed every paragraph in between plus the fence's own
-                    // opening line — leaving an orphaned closing fence. This is
-                    // issue #117 defect 3 on the streaming path; the same defect
-                    // was fixed in MarkdownParser (521b2dc7), but THIS is the
-                    // renderer the chat transcript actually uses.
-                    val closeIdx = findDisplayMathClose(lines, i + 1)
-                    if (closeIdx == null) {
-                        // No plausible closer — emit the `$$` as ordinary text
-                        // and let the following lines parse normally.
-                        blocks.add(MdBlock.Paragraph(line))
-                        i++
-                    } else {
-                        val rawLines = mutableListOf(line)
-                        val mathLines = mutableListOf<String>()
-                        if (rest.isNotEmpty()) mathLines.add(rest)
-                        i++
-                        while (i <= closeIdx) {
-                            rawLines.add(lines[i])
-                            if (i == closeIdx) {
-                                val close = lines[i].indexOf("$$")
-                                val pre = lines[i].substring(0, close)
-                                if (pre.isNotEmpty()) mathLines.add(pre)
-                                i++
-                                break
-                            }
-                            mathLines.add(lines[i])
-                            i++
-                        }
-                        blocks.add(
-                            MdBlock.MathDisplay(
-                                rawLines.joinToString("\n"),
-                                mathLines.joinToString("\n").trim(),
-                            ),
-                        )
-                    }
-                }
-            }
-            trimmed.startsWith("\\[") -> {
-                val rest = trimmed.removePrefix("\\[")
-                val inlineEnd = rest.indexOf("\\]")
-                if (inlineEnd >= 0) {
-                    val latex = rest.substring(0, inlineEnd).trim()
-                    blocks.add(MdBlock.MathDisplay(line, latex))
-                    i++
-                } else {
+            // Dev40: one delimiter scanner for paired display math. Incomplete streams
+            // remain literal and never eat a later fenced code block or chapter.
+            DisplayMathBoundary.start(line) != null -> {
+                val opening = DisplayMathBoundary.start(line)!!
+                val closing = DisplayMathBoundary.close(lines, i, opening)
+                if (closing == null) {
                     val rawLines = mutableListOf(line)
-                    val mathLines = mutableListOf<String>()
-                    if (rest.isNotEmpty()) mathLines.add(rest)
                     i++
-                    while (i < lines.size) {
-                        rawLines.add(lines[i])
-                        val close = lines[i].indexOf("\\]")
-                        if (close >= 0) {
-                            val pre = lines[i].substring(0, close)
-                            if (pre.isNotEmpty()) mathLines.add(pre)
-                            i++
-                            break
-                        }
-                        mathLines.add(lines[i])
-                        i++
+                    var rawChars = line.length
+                    while (i < lines.size &&
+                        !DisplayMathBoundary.isRecoveryBoundary(lines[i]) && DisplayMathBoundary.start(lines[i]) == null &&
+                        rawLines.size < 512 && rawChars + lines[i].length + 1 <= 65536) {
+                        rawChars += lines[i].length + 1
+                        rawLines.add(lines[i]); i++
                     }
-                    blocks.add(MdBlock.MathDisplay(rawLines.joinToString("\n"), mathLines.joinToString("\n").trim()))
+                    blocks.add(MdBlock.RawMath(rawLines.joinToString("\n")))
+                } else {
+                    val raw = (lines.subList(i, closing.line) +
+                        lines[closing.line].substring(0, closing.offset + opening.kind.close.length)).joinToString("\n")
+                    val latex = if (closing.line == i) {
+                        line.substring(opening.bodyStart, closing.offset)
+                    } else buildString {
+                        append(line.substring(opening.bodyStart))
+                        for (j in i + 1 until closing.line) { append('\n'); append(lines[j]) }
+                        append('\n'); append(lines[closing.line].substring(0, closing.offset))
+                    }
+                    blocks.add(MdBlock.MathDisplay(raw, latex.trim()))
+                    // Text after the closer is not part of the formula or silently dropped.
+                    val suffix = lines[closing.line].substring(closing.offset + opening.kind.close.length)
+                    if (suffix.isNotBlank()) {
+                        lines[closing.line] = suffix.trimStart()
+                        i = closing.line
+                    } else i = closing.line + 1
                 }
             }
             // Fenced code block
-            trimmed.startsWith("```") -> {
-                val lang = trimmed.removePrefix("```").trim()
+            (trimmed.startsWith("```") || trimmed.startsWith("~~~")) -> {
+                val fenceChar = trimmed.first()
+                val fenceLength = trimmed.takeWhile { it == fenceChar }.length
+                val lang = trimmed.drop(fenceLength).trim()
                 val codeLines = mutableListOf<String>()
                 val rawLines = mutableListOf(line)
                 i++
                 while (i < lines.size) {
                     rawLines.add(lines[i])
-                    if (lines[i].trimStart().startsWith("```")) { i++; break }
+                    val fenceEnd = lines[i].trimStart()
+                    if (fenceEnd.takeWhile { it == fenceChar }.length >= fenceLength &&
+                        fenceEnd.dropWhile { it == fenceChar }.isBlank()) { i++; break }
                     codeLines.add(lines[i])
                     i++
                 }
@@ -2332,7 +2333,7 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
             }
 
             // Heading
-            trimmed.startsWith("#") && (trimmed.length == 1 || trimmed[trimmed.indexOfFirst { it != '#' }.coerceAtLeast(0)] == ' ') -> {
+            isHeadingLine(trimmed) -> {
                 val level = trimmed.takeWhile { it == '#' }.length.coerceAtMost(6)
                 val text = trimmed.drop(level).trimStart()
                 blocks.add(MdBlock.Heading(line, level, text))
@@ -2388,19 +2389,33 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
                 blocks.add(MdBlock.BlockQuote(rawLines.joinToString("\n"), innerBlocks))
             }
 
-            // Task list: - [x] or - [ ]
+            // Task items share the same continuation rules as regular list items.
             trimmed.matches(taskListItemRegex) -> {
                 val items = mutableListOf<TaskItem>()
                 val rawLines = mutableListOf<String>()
-                while (i < lines.size && lines[i].trimStart().matches(taskListItemRegex)) {
-                    rawLines.add(lines[i])
-                    val t = lines[i].trimStart()
-                    val checked = t.contains("[x]", ignoreCase = true)
-                    val text = t.replaceFirst(taskListPrefixRegex, "")
-                    items.add(TaskItem(checked, text))
+                val baseIndent = line.length - trimmed.length
+                while (i < lines.size) {
+                    val l = lines[i]
+                    val t = l.trimStart()
+                    val indent = l.length - t.length
+                    if (t.isEmpty()) {
+                        if (items.isNotEmpty()) {
+                            val last = items.last()
+                            items[items.lastIndex] = last.copy(text = last.text + "\n")
+                        }
+                        rawLines.add(l); i++; continue
+                    }
+                    if (indent > baseIndent && items.isNotEmpty()) {
+                        rawLines.add(l)
+                        val last = items.last()
+                        items[items.lastIndex] = last.copy(text = last.text + "\n" + t)
+                    } else if (t.matches(taskListItemRegex)) {
+                        rawLines.add(l)
+                        items.add(TaskItem(t.contains("[x]", ignoreCase = true), t.replaceFirst(taskListPrefixRegex, "")))
+                    } else break
                     i++
                 }
-                blocks.add(MdBlock.TaskList(rawLines.joinToString("\n"), items.map { it.withWideMathSplit() }))
+                blocks.add(MdBlock.TaskList(rawLines.joinToString("\n").trimEnd('\n'), items.map { it.withWideMathSplit() }))
             }
 
             // Unordered list
@@ -2412,9 +2427,16 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
                     val l = lines[i]
                     val t = l.trimStart()
                     val indent = l.length - t.length
-                    if (t.isEmpty()) { i++; continue }
+                    if (t.isEmpty()) {
+                        if (items.isNotEmpty()) {
+                            val last = items.last()
+                            items[items.lastIndex] = last.copy(text = last.text + "\n")
+                        }
+                        rawLines.add(l); i++; continue
+                    }
                     if (!t.matches(bulletListItemRegex) && indent <= baseIndent) break
                     if (indent > baseIndent) {
+                        rawLines.add(l)
                         // Continuation or nested — append to last item
                         if (items.isNotEmpty()) {
                             val last = items.last()
@@ -2426,7 +2448,7 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
                     }
                     i++
                 }
-                blocks.add(MdBlock.UnorderedList(rawLines.joinToString("\n"), items.map { it.withWideMathSplit() }))
+                blocks.add(MdBlock.UnorderedList(rawLines.joinToString("\n").trimEnd('\n'), items.map { it.withWideMathSplit() }))
             }
 
             // Ordered list
@@ -2440,9 +2462,16 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
                     val l = lines[i]
                     val t = l.trimStart()
                     val indent = l.length - t.length
-                    if (t.isEmpty()) { i++; continue }
+                    if (t.isEmpty()) {
+                        if (items.isNotEmpty()) {
+                            val last = items.last()
+                            items[items.lastIndex] = last.copy(text = last.text + "\n")
+                        }
+                        rawLines.add(l); i++; continue
+                    }
                     if (!t.matches(numberedListItemRegex) && indent <= baseIndent) break
                     if (indent > baseIndent) {
+                        rawLines.add(l)
                         if (items.isNotEmpty()) {
                             val last = items.last()
                             items[items.lastIndex] = last.copy(text = last.text + "\n" + t)
@@ -2453,7 +2482,7 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
                     }
                     i++
                 }
-                blocks.add(MdBlock.OrderedList(rawLines.joinToString("\n"), items.map { it.withWideMathSplit() }, startNum))
+                blocks.add(MdBlock.OrderedList(rawLines.joinToString("\n").trimEnd('\n'), items.map { it.withWideMathSplit() }, startNum))
             }
 
             // Empty line
@@ -2465,8 +2494,8 @@ private suspend fun parseMarkdownBlocks(content: String): List<MdBlock> {
                 while (i < lines.size) {
                     val l = lines[i]
                     val t = l.trimStart()
-                    if (t.isEmpty() || t.startsWith("#") || t.startsWith("```") ||
-                        isBlockquoteLine(t) || t.matches(thematicBreakRegex) ||
+                    if (t.isEmpty() || isHeadingLine(t) || t.startsWith("```") || t.startsWith("~~~") ||
+                        DisplayMathBoundary.start(l) != null || isBlockquoteLine(t) || t.matches(thematicBreakRegex) ||
                         t.matches(bulletListItemRegex) || t.matches(numberedListItemRegex) ||
                         t.matches(standaloneImageLineRegex) ||
                         (t.contains('|') && i + 1 < lines.size &&
@@ -2566,6 +2595,8 @@ private fun RenderBlock(block: MdBlock) {
     // blocks (false) keep the plain per-block cache — no behavior change there.
     val liveIncremental = LocalLiveIncremental.current
     when (block) {
+        is MdBlock.RawMath -> MdText(text = AnnotatedString(block.raw), fontSize = BaseFontSize,
+            lineHeight = BaseLineHeight, color = currentMdColors().text)
         is MdBlock.Paragraph -> {
             MdText(
                 text = if (liveIncremental) MarkdownParseCaches.inlineIncremental(block.raw, colors)
@@ -3091,7 +3122,12 @@ private fun RenderListItemBody(
             WithSearchPath(itemPath?.let { "$it/$k" }) {
             when (child) {
                 is MdBlock.MathDisplay -> RenderMathDisplay(child.latex)
+                is MdBlock.RawMath -> MdText(text = AnnotatedString(child.raw), fontSize = BaseFontSize,
+                    lineHeight = BaseLineHeight, color = textColor)
                 is MdBlock.Table -> RenderSearchableTable(child)
+                is MdBlock.CodeBlock, is MdBlock.BlockQuote, is MdBlock.Heading,
+                is MdBlock.UnorderedList, is MdBlock.OrderedList, is MdBlock.TaskList,
+                is MdBlock.HorizontalRule, is MdBlock.Image, is MdBlock.Video, is MdBlock.Audio -> RenderBlock(child)
                 else -> MdText(
                     text = MarkdownParseCaches.inline(child.raw, colors),
                     fontSize = BaseFontSize,
@@ -4442,6 +4478,10 @@ internal fun safeInlineSplitOffset(text: String): Int {
     return lastSafeNewlineEnd
 }
 
+/** Preserve math delimiters/commands when they remain literal; escape only Markdown punctuation. */
+private fun markdownEscapable(character: Char): Boolean =
+    character in "!\"#$%&'()*+,-./:;<=>?@^_`{|}~\\"
+
 private fun parseInline(text: String, colors: MdColors): AnnotatedString {
     return buildAnnotatedString {
         // [T-md-inline-html] Built on the first whitelisted open tag only.
@@ -4462,7 +4502,7 @@ private fun parseInline(text: String, colors: MdColors): AnnotatedString {
                     } else { append(text[i]); i++ }
                 }
                 // Escape: \* \_ \` etc.
-                text[i] == '\\' && i + 1 < text.length -> {
+                text[i] == '\\' && i + 1 < text.length && markdownEscapable(text[i + 1]) -> {
                     append(text[i + 1]); i += 2
                 }
                 // Image: ![alt](url) — render as [alt] link
@@ -4699,7 +4739,7 @@ private fun AnnotatedString.Builder.appendRecursive(text: String, colors: MdColo
                     } else { append(text[i]); i++ }
                 } else { append(text[i]); i++ }
             }
-            text[i] == '\\' && i + 1 < text.length -> { append(text[i + 1]); i += 2 }
+            text[i] == '\\' && i + 1 < text.length && markdownEscapable(text[i + 1]) -> { append(text[i + 1]); i += 2 }
             text.startsWith("```", i) -> { append("```"); i += 3 }
             text[i] == '`' -> {
                 val end = findInlineCodeClose(text, i + 1)

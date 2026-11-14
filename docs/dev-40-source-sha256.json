@@ -1,0 +1,18 @@
+{
+  "scripts/configure_server_dev.py": "e5a4d303332be62af47d7887326f5cd8b8e95fe21236f9f524250898b2450787",
+  "src/android/app/build.gradle.kts": "ef0de513847bfda65cd750da3d8f745f7a7a818e8d9b70695376583296562392",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatBackground.kt": "3378e30ffdb5fe928594677a98de3f3a22ee0551e58f31f654a305be93f43253",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatBackgroundStore.kt": "deed11800300cac8ba424b492fae158bfb135c58ef39d7b80fe8a88a14033286",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatComposerWidgets.kt": "fc330a856885e7b029e84f2e658ec8afb59607d057536e45284b5b0340298df6",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatGlass.kt": "6419e31088ac04670f3c2ba0cfd22568f8314d0d50f0addaafb3fa8ec39fb379",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/ChatScreen.kt": "9130c1479521e9e49d7aeda72910ba5679fcbcb31c0c7567ffd9fed99814f60d",
+  "src/android/app/src/main/res/values-zh/strings_chat_glass.xml": "3e8ee48fe09532f96bea54873ebc2d26620da3f6b8fe56c036d3edd3311003a4",
+  "src/android/app/src/main/res/values/strings_chat_glass.xml": "1290c8511b673e159bcfda0296a63681b32c0b08a4fb5e1f1d81f498da9d5c88",
+  "src/android/app/src/test/java/com/openminis/app/ui/chat/ChatGlassPersistenceTest.kt": "c5492d8e9734020eba0cd407119ea730ccf9f90d6ca4a9fd258599b284f7f823",
+  "src/android/app/src/test/java/com/openminis/app/ui/chat/ChatGlassPreferencesTest.kt": "1e2af02bbc113571c0e2fd6971bb5e6e0a1ae6e2b3d9477cdfe2fa3aed2bf354",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/DisplayMathBoundary.kt": "d035e840ccff1ecd81406b4e92057d2f41790c91c0638c7a30fa2dc2baf4851f",
+  "src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt": "bb6c3d2ea0f44be43deeb7a4e7076d98cf1ebae59bdac50117462cea80bec3ce",
+  "src/android/app/src/test/java/com/openminis/app/ui/chat/DisplayMathBoundaryTest.kt": "5ae48f0340ec29436b33cb4d0bb1863e99ce2e0a94dfc42f63dafa784826ed6e",
+  "src/android/app/src/test/java/com/openminis/app/ui/chat/DisplayMathRecoveryTest.kt": "fc5e504aec12e016dc1e02890751e7c21169e193531e0d4acd1105c9d57cf4da",
+  "src/android/app/src/test/java/com/openminis/app/ui/chat/DisplayMathRegressionTest.kt": "935d26a640128ce547f10e5e480cfdf4d4b09b210dfc7bffbb1870949767a4a8"
+}

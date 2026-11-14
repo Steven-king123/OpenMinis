@@ -46,14 +46,22 @@ import coil.compose.AsyncImage
 import com.openminis.app.R
 import com.openminis.app.ui.settings.SettingsSection
 import com.openminis.app.ui.settings.SettingsValueRow
+import com.openminis.app.ui.settings.SettingsSwitchRow
+import androidx.compose.foundation.layout.Arrangement
 import com.openminis.app.ui.settings.getAppearancePrefs
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Only a private app File and overlay strength, never a bitmap or provider attachment. */
-data class ChatBackgroundState(val file: File?, val dim: Float, val messageOpacity: Float = ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY) {
+/** Local appearance only; never a bitmap or provider attachment. Resize and glass are independent. */
+data class ChatBackgroundState(
+    val file: File?,
+    val dim: Float,
+    val messageOpacity: Float = ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY,
+    val glassEnabled: Boolean = ChatBackgroundPolicy.DEFAULT_GLASS_ENABLED,
+    val resizeWithInput: Boolean = ChatBackgroundPolicy.DEFAULT_RESIZE_WITH_INPUT,
+) {
     val hasImage: Boolean get() = file != null
 }
 
@@ -71,7 +79,13 @@ fun rememberChatBackgroundState(): State<ChatBackgroundState> {
     )
     fun readMessageOpacity() = ChatBackgroundPolicy.messageOpacity(prefs.getFloat(
         ChatBackgroundPolicy.MESSAGE_OPACITY_KEY, ChatBackgroundPolicy.DEFAULT_MESSAGE_OPACITY))
-    val state = remember(prefs) { mutableStateOf(ChatBackgroundState(null, readDim(), readMessageOpacity())) }
+    fun readGlassEnabled() = prefs.getBoolean(
+        ChatBackgroundPolicy.GLASS_ENABLED_KEY, ChatBackgroundPolicy.DEFAULT_GLASS_ENABLED)
+    fun readResizeWithInput() = prefs.getBoolean(
+        ChatBackgroundPolicy.RESIZE_WITH_INPUT_KEY, ChatBackgroundPolicy.DEFAULT_RESIZE_WITH_INPUT)
+    val state = remember(prefs) {
+        mutableStateOf(ChatBackgroundState(null, readDim(), readMessageOpacity(), readGlassEnabled(), readResizeWithInput()))
+    }
     var filename by remember(prefs) { mutableStateOf(prefs.getString(ChatBackgroundPolicy.FILE_KEY, null)) }
     var refresh by remember(prefs) { mutableIntStateOf(0) }
     DisposableEffect(prefs) {
@@ -87,10 +101,19 @@ fun rememberChatBackgroundState(): State<ChatBackgroundState> {
             if (key == null || key == ChatBackgroundPolicy.MESSAGE_OPACITY_KEY) {
                 state.value = state.value.copy(messageOpacity = readMessageOpacity())
             }
+            if (key == null || key == ChatBackgroundPolicy.GLASS_ENABLED_KEY) {
+                state.value = state.value.copy(glassEnabled = readGlassEnabled())
+            }
+            if (key == null || key == ChatBackgroundPolicy.RESIZE_WITH_INPUT_KEY) {
+                state.value = state.value.copy(resizeWithInput = readResizeWithInput())
+            }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         filename = prefs.getString(ChatBackgroundPolicy.FILE_KEY, null)
-        state.value = state.value.copy(dim = readDim(), messageOpacity = readMessageOpacity())
+        state.value = state.value.copy(
+            dim = readDim(), messageOpacity = readMessageOpacity(),
+            glassEnabled = readGlassEnabled(), resizeWithInput = readResizeWithInput(),
+        )
         refresh++
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
@@ -104,9 +127,12 @@ fun rememberChatBackgroundState(): State<ChatBackgroundState> {
 }
 
 /**
- * Place as FIRST child of an existing chat content Box, using Modifier.matchParentSize().
- * It consumes no input, changes no controls and draws nothing when no wallpaper is set.
- * Keep opaque chat-list backgrounds transparent when state.hasImage, not toolbar/composer.
+ * Draw in a fixed viewport sibling of IME-padded content when !state.resizeWithInput;
+ * use the original adaptive content bounds when state.resizeWithInput.
+ * This layer does not resize itself or consume input, and draws nothing without an image.
+ * Register its region with chatGlassSource; never wrap glass controls in the same source.
+ * Keep opaque chat-list backgrounds transparent when state.hasImage. Glass control
+ * containers become transparent only when glassEnabled; otherwise preserve their colors.
  */
 @Composable
 fun ChatBackgroundLayer(modifier: Modifier = Modifier) {
@@ -181,6 +207,20 @@ fun ChatBackgroundSettings() {
         header = stringResource(R.string.chat_background_title),
         footer = stringResource(R.string.chat_background_footer),
     ) {
+        SettingsSwitchRow(
+            title = stringResource(R.string.chat_glass_title),
+            subtitle = stringResource(R.string.chat_glass_help),
+            checked = state.glassEnabled,
+            onCheckedChange = { value -> runOperation { ChatBackgroundStore.setGlassEnabled(application, value) } },
+            enabled = enabled,
+        )
+        SettingsSwitchRow(
+            title = stringResource(R.string.chat_background_resize_title),
+            subtitle = stringResource(R.string.chat_background_resize_help),
+            checked = state.resizeWithInput,
+            onCheckedChange = { value -> runOperation { ChatBackgroundStore.setResizeWithInput(application, value) } },
+            enabled = enabled,
+        )
         SettingsValueRow(
             title = stringResource(R.string.chat_background_choose),
             value = stringResource(
@@ -239,30 +279,79 @@ fun ChatBackgroundSettings() {
                 )
                 Text(stringResource(R.string.chat_message_opacity_help), style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 8.dp))
-                Text(
-                    stringResource(R.string.chat_background_preview),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(bottom = 8.dp),
+            }
+        }
+        // One shared preview for wallpaper, dim, message opacity, glass and resizing.
+        ChatAppearancePreview(state, draftDim, draftMessageOpacity)
+    }
+}
+
+/** Isolated render state: never samples the real chat or another settings preview. */
+@Composable
+private fun ChatAppearancePreview(state: ChatBackgroundState, dim: Float, messageOpacity: Float) {
+    var keyboardVisible by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        Text(stringResource(R.string.chat_background_preview),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(bottom = 8.dp))
+        SettingsSwitchRow(
+            title = stringResource(R.string.chat_background_preview_keyboard),
+            checked = keyboardVisible,
+            onCheckedChange = { keyboardVisible = it },
+            showDivider = false,
+        )
+        ChatGlassHost(enabled = state.glassEnabled) {
+            Box(Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surface)) {
+                // The outer frame remains fixed; only adaptive mode crops to input space.
+                Box(Modifier.fillMaxSize()
+                    .padding(bottom = if (state.resizeWithInput && keyboardVisible) 88.dp else 0.dp)
+                    .chatGlassSource(zIndex = 0f)) {
+                    Wallpaper(state.file, dim, Modifier.fillMaxSize())
+                }
+                val resolvedPreviewStyle = resolveMessageBackplateStyle(state.hasImage,
+                    MaterialTheme.colorScheme.background.luminance() < 0.5f, messageOpacity)
+                val previewStyle = if (state.hasImage) resolvedPreviewStyle else resolvedPreviewStyle.copy(
+                    background = androidx.compose.ui.graphics.Color.Transparent,
+                    text = MaterialTheme.colorScheme.onSurface,
                 )
-                Box(
-                    Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface),
-                ) {
-                    Wallpaper(state.file, draftDim, Modifier.fillMaxSize())
-                    val previewStyle = resolveMessageBackplateStyle(state.hasImage,
-                        MaterialTheme.colorScheme.background.luminance() < 0.5f, draftMessageOpacity)
-                    val plate = previewStyle.background
-                    val ink = previewStyle.text
-                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.chat_message_preview_user), color = ink,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.align(Alignment.End).background(plate, RoundedCornerShape(16.dp)).padding(12.dp))
-                        Text(stringResource(R.string.chat_message_preview_thinking), color = ink,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.background(plate, RoundedCornerShape(16.dp)).padding(12.dp))
-                        Text(stringResource(R.string.chat_background_preview_message), color = ink,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.background(plate, RoundedCornerShape(16.dp)).padding(12.dp))
+                // Message opacity is manual and entirely independent of glass.
+                Column(Modifier.fillMaxWidth().padding(top = 50.dp, start = 12.dp, end = 12.dp)
+                    .chatGlassSource(zIndex = 1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.chat_message_preview_user), color = previewStyle.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.align(Alignment.End)
+                            .background(previewStyle.background, RoundedCornerShape(16.dp)).padding(12.dp))
+                    Text(stringResource(R.string.chat_message_preview_thinking), color = previewStyle.text,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.background(previewStyle.background, RoundedCornerShape(16.dp)).padding(12.dp))
+                    Text(stringResource(R.string.chat_background_preview_message), color = previewStyle.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.background(previewStyle.background, RoundedCornerShape(16.dp)).padding(12.dp))
+                }
+                // All effects are siblings of sources: none can capture itself.
+                Text(stringResource(R.string.chat_glass_preview_toolbar),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                        .chatGlassSurface(RoundedCornerShape(0.dp), MaterialTheme.colorScheme.surface).padding(12.dp))
+                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                    Text(stringResource(R.string.chat_glass_preview_status),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp)
+                            .chatGlassSurface(RoundedCornerShape(16.dp), MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 14.dp, vertical = 6.dp))
+                    Text(stringResource(R.string.chat_glass_preview_input),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(8.dp)
+                            .chatGlassSurface(RoundedCornerShape(24.dp), MaterialTheme.colorScheme.surfaceContainer)
+                            .padding(14.dp))
+                    if (keyboardVisible) {
+                        Box(Modifier.fillMaxWidth().height(88.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.chat_background_preview_keyboard_label),
+                                style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_glass_title">Glass chat controls</string>
+    <string name="chat_glass_help">Blur the background behind the top bar, input and floating tool status. Does not change message opacity. Android 12 or later; older devices use solid surfaces.</string>
+    <string name="chat_background_resize_title">Resize background with input</string>
+    <string name="chat_background_resize_help">Off: keep the background fixed to the chat viewport when the keyboard or input height changes. On: adapt and crop the background to the available chat area.</string>
+    <string name="chat_background_preview_keyboard">Preview keyboard</string>
+    <string name="chat_background_preview_keyboard_label">Keyboard preview</string>
+    <string name="chat_glass_preview_toolbar">Chat · Glass preview</string>
+    <string name="chat_glass_preview_status">Tool is running…</string>
+    <string name="chat_glass_preview_input">Message…</string>
+</resources>

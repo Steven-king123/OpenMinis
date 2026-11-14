@@ -42,6 +42,7 @@ Transitive packages (pinned in `Package.resolved`), all **Apache-2.0**, maintain
 | kotlinx-serialization-json | 1.7.3 | **Apache-2.0** |
 | kotlinx-coroutines-android | 1.9.0 | **Apache-2.0** |
 | Coil (coil-compose) | 2.7.0 | **Apache-2.0** |
+| [Haze](https://github.com/chrisbanes/haze) — backdrop blur | 1.6.10 (pinned) | **Apache-2.0**, Chris Banes |
 | multiplatform-markdown-renderer (+ m3) — mikepenz | 0.33.0 | **Apache-2.0** |
 | Reorderable (sh.calvin.reorderable) | 2.4.0 | **Apache-2.0** |
 | ACRA (acra-core) | 5.12.0 | **Apache-2.0** |
